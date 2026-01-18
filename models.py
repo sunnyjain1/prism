@@ -1,0 +1,64 @@
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, BigInteger
+from sqlalchemy.orm import relationship
+from .database import Base
+import datetime
+import enum
+
+class AccountType(str, enum.Enum):
+    checking = "checking"
+    savings = "savings"
+    credit = "credit"
+    investment = "investment"
+    cash = "cash"
+
+class TransactionType(str, enum.Enum):
+    income = "income"
+    expense = "expense"
+    transfer = "transfer"
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    type = Column(String, nullable=False) # income, expense
+    color = Column(String, default="#10b981") # Primary emerald color
+
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id = Column(String, primary_key=True, index=True)
+    name = Column(String, index=True)
+    type = Column(String) # checking, savings, credit, investment, cash
+    currency = Column(String, default="USD")
+    balance = Column(Float, default=0.0)
+    
+    # New Phase 3 Fields
+    billing_cycle_day = Column(Integer, default=1) # For credit cards
+    credit_limit = Column(Float, nullable=True)
+
+    transactions = relationship("Transaction", foreign_keys="Transaction.account_id", back_populates="account")
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id = Column(String, primary_key=True, index=True)
+    amount = Column(Float, nullable=False)
+    type = Column(String, nullable=False) # income, expense, transfer
+    description = Column(String)
+    merchant = Column(String, nullable=True)
+    date = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(BigInteger) # For sync logic if needed
+    
+    # Category relation
+    category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    category = relationship("Category")
+    
+    # Account relations
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    account = relationship("Account", foreign_keys=[account_id], back_populates="transactions")
+    
+    # Transfer relations
+    destination_account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    destination_account = relationship("Account", foreign_keys=[destination_account_id])
+
