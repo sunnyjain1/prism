@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from .. import models, schemas, database
+from .dependencies import get_current_user, check_role
+from ..user_models import User, UserRole
+
 
 from datetime import datetime
 from typing import Optional
@@ -21,25 +24,41 @@ def get_db():
         db.close()
 
 @router.post("/", response_model=schemas.Transaction)
-def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db)):
-    db_transaction = models.Transaction(**transaction.dict())
+def create_transaction(
+    transaction: schemas.TransactionCreate, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_role([UserRole.ADMIN, UserRole.EDITOR]))
+):
+    db_transaction = models.Transaction(**transaction.dict(), owner_id=current_user.id)
     db.add(db_transaction)
     
-    # Balance update logic
+    # Balance update logic - strictly filtered by owner_id
     if transaction.type == schemas.TransactionType.income:
-        account = db.query(models.Account).filter(models.Account.id == transaction.account_id).first()
+        account = db.query(models.Account).filter(
+            models.Account.id == transaction.account_id,
+            models.Account.owner_id == current_user.id
+        ).first()
         if account:
             account.balance += transaction.amount
     elif transaction.type == schemas.TransactionType.expense:
-        account = db.query(models.Account).filter(models.Account.id == transaction.account_id).first()
+        account = db.query(models.Account).filter(
+            models.Account.id == transaction.account_id,
+            models.Account.owner_id == current_user.id
+        ).first()
         if account:
             account.balance -= transaction.amount
     elif transaction.type == schemas.TransactionType.transfer:
         if not transaction.destination_account_id:
             raise HTTPException(status_code=400, detail="Destination account required for transfer")
         
-        src = db.query(models.Account).filter(models.Account.id == transaction.account_id).first()
-        dst = db.query(models.Account).filter(models.Account.id == transaction.destination_account_id).first()
+        src = db.query(models.Account).filter(
+            models.Account.id == transaction.account_id,
+            models.Account.owner_id == current_user.id
+        ).first()
+        dst = db.query(models.Account).filter(
+            models.Account.id == transaction.destination_account_id,
+            models.Account.owner_id == current_user.id
+        ).first()
         
         if src:
             src.balance -= transaction.amount
@@ -50,15 +69,18 @@ def create_transaction(transaction: schemas.TransactionCreate, db: Session = Dep
     db.refresh(db_transaction)
     return db_transaction
 
+
 @router.get("/", response_model=List[schemas.Transaction])
 def read_transactions(
     skip: int = 0, 
     limit: int = 100, 
     month: Optional[int] = None, 
     year: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    query = db.query(models.Transaction)
+    query = db.query(models.Transaction).filter(models.Transaction.owner_id == current_user.id)
+
     
     if month is not None and year is not None:
         start_date = datetime(year, month, 1)
@@ -74,16 +96,30 @@ def read_transactions(
 
 
 @router.delete("/{transaction_id}")
-def delete_transaction(transaction_id: str, db: Session = Depends(get_db)):
-    db_transaction = db.query(models.Transaction).filter(models.Transaction.id == transaction_id).first()
+def delete_transaction(
+    transaction_id: str, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_role([UserRole.ADMIN, UserRole.EDITOR]))
+):
+    db_transaction = db.query(models.Transaction).filter(
+        models.Transaction.id == transaction_id,
+        models.Transaction.owner_id == current_user.id
+    ).first()
     if db_transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     db.delete(db_transaction)
     db.commit()
     return {"ok": True}
+
 @router.get("/export")
-def export_transactions(db: Session = Depends(get_db)):
-    transactions = db.query(models.Transaction).order_by(models.Transaction.date.desc()).all()
+def export_transactions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.owner_id == current_user.id
+    ).order_by(models.Transaction.date.desc()).all()
+
     
     output = io.StringIO()
     writer = csv.writer(output)
@@ -109,7 +145,12 @@ def export_transactions(db: Session = Depends(get_db)):
     )
 
 @router.post("/import")
-async def import_transactions(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_transactions(
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(check_role([UserRole.ADMIN, UserRole.EDITOR]))
+):
+
     content = await file.read()
     decoded = content.decode('utf-8')
     reader = csv.DictReader(io.StringIO(decoded))
@@ -118,8 +159,12 @@ async def import_transactions(file: UploadFile = File(...), db: Session = Depend
     for row in reader:
         # Simple import logic, assuming the CSV follows the exported format
         try:
-            # Check if transaction already exists to avoid duplicates
-            existing = db.query(models.Transaction).filter(models.Transaction.id == row['id']).first()
+            # Check if transaction already exists to avoid duplicates - strictly filtered by owner_id
+            existing = db.query(models.Transaction).filter(
+                models.Transaction.id == row['id'],
+                models.Transaction.owner_id == current_user.id
+            ).first()
+
             if existing:
                 continue
                 
@@ -131,22 +176,37 @@ async def import_transactions(file: UploadFile = File(...), db: Session = Depend
                 date=datetime.fromisoformat(row['date'].replace('Z', '')),
                 account_id=row['account_id'],
                 category_id=row['category_id'] if row['category_id'] else None,
-                destination_account_id=row['destination_account_id'] if row['destination_account_id'] else None
+                destination_account_id=row['destination_account_id'] if row['destination_account_id'] else None,
+                owner_id=current_user.id
             )
+
             db.add(db_transaction)
             
-            # Update account balances
+            # Update account balances - strictly filtered by owner_id
             if db_transaction.type == "income":
-                account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
+                account = db.query(models.Account).filter(
+                    models.Account.id == db_transaction.account_id,
+                    models.Account.owner_id == current_user.id
+                ).first()
                 if account: account.balance += db_transaction.amount
             elif db_transaction.type == "expense":
-                account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
+                account = db.query(models.Account).filter(
+                    models.Account.id == db_transaction.account_id,
+                    models.Account.owner_id == current_user.id
+                ).first()
                 if account: account.balance -= db_transaction.amount
             elif db_transaction.type == "transfer":
-                src = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
-                dst = db.query(models.Account).filter(models.Account.id == db_transaction.destination_account_id).first()
+                src = db.query(models.Account).filter(
+                    models.Account.id == db_transaction.account_id,
+                    models.Account.owner_id == current_user.id
+                ).first()
+                dst = db.query(models.Account).filter(
+                    models.Account.id == db_transaction.destination_account_id,
+                    models.Account.owner_id == current_user.id
+                ).first()
                 if src: src.balance -= db_transaction.amount
                 if dst: dst.balance += db_transaction.amount
+
             
             imported_count += 1
         except Exception as e:

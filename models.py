@@ -23,6 +23,10 @@ class Category(Base):
     name = Column(String, nullable=False)
     type = Column(String, nullable=False) # income, expense
     color = Column(String, default="#10b981") # Primary emerald color
+    
+    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -36,6 +40,10 @@ class Account(Base):
     # New Phase 3 Fields
     billing_cycle_day = Column(Integer, default=1) # For credit cards
     credit_limit = Column(Float, nullable=True)
+    
+    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+
 
     transactions = relationship("Transaction", foreign_keys="Transaction.account_id", back_populates="account")
 
@@ -49,6 +57,10 @@ class Transaction(Base):
     merchant = Column(String, nullable=True)
     date = Column(DateTime, default=datetime.datetime.utcnow)
     timestamp = Column(BigInteger) # For sync logic if needed
+    
+    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+
     
     # Category relation
     category_id = Column(String, ForeignKey("categories.id"), nullable=True)
