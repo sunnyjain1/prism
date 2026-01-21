@@ -2,9 +2,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import os
 
 # Configuration
-SECRET_KEY = "y0uR_sUp3r_s3cr3t_k3y_f0r_pR1sm_2026" # Change in production
+SECRET_KEY = os.environ.get("SECRET_KEY", "y0uR_sUp3r_s3cr3t_k3y_f0r_pR1sm_2026")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 

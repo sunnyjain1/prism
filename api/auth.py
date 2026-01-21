@@ -1,5 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 import traceback
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import os
+import secrets
+import string
+
+CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "252443340779-4u7edgsne2m72dkjjggs4gedqmvi95d0.apps.googleusercontent.com")
+
 
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -69,3 +77,53 @@ from .dependencies import get_current_user
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+
+class GoogleToken(BaseModel):
+    token: str
+
+@router.post("/google", response_model=Token)
+def google_login(token_data: GoogleToken, db: Session = Depends(get_db)):
+    try:
+        # Developer Mock Auth Support
+        allow_mock = os.environ.get("ALLOW_MOCK_AUTH", "true").lower() == "true"
+        mock_token = "dev-token-prism"
+        
+        if allow_mock and token_data.token == mock_token:
+            email = "mockuser@example.com"
+            name = "Prism Developer"
+        else:
+            # Verify the token with Google
+            idinfo = id_token.verify_oauth2_token(token_data.token, requests.Request(), CLIENT_ID)
+            email = idinfo['email']
+            name = idinfo.get('name', '')
+        
+        # Check if user exists
+        user = db.query(User).filter(User.email == email).first()
+        
+        if not user:
+            # Create a new user with a random secure password
+            # We strictly enforce password existence, so we generate a strong random one
+            alphabet = string.ascii_letters + string.digits + string.punctuation
+            random_password = ''.join(secrets.choice(alphabet) for i in range(20))
+            hashed_password = get_password_hash(random_password)
+            
+            user = User(
+                id=str(uuid.uuid4()),
+                email=email,
+                hashed_password=hashed_password,
+                full_name=name,
+                role=UserRole.EDITOR.value
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            
+        access_token = create_access_token(data={"sub": user.email})
+        return {"access_token": access_token, "token_type": "bearer"}
+        
+    except ValueError:
+        # Invalid token
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+    except Exception as e:
+        print(f"Google login error: {e}")
+        raise HTTPException(status_code=500, detail="Google login failed")
