@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from .. import models, schemas
-from ..database import SessionLocal
+import models, schemas
+from api.dependencies import get_current_user, check_role
+from user_models import User, UserRole
+
+from database import SessionLocal
 
 router = APIRouter(prefix="/api/categories", tags=["categories"])
 
