@@ -8,11 +8,13 @@ models.Base.metadata.create_all(bind=database.engine)
 user_models.Base.metadata.create_all(bind=database.engine)
 
 
-app = FastAPI(title="Prism API", redirect_slashes=False)
+app = FastAPI(title="Prism API")
 
 # Load CORS origins from environment (comma-separated) or use defaults
 default_origins = "http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000"
-allowed_origins = os.environ.get("ALLOWED_ORIGINS", default_origins).split(",")
+raw_origins = os.environ.get("ALLOWED_ORIGINS", default_origins).split(",")
+# Clean origins: trim whitespace and remove trailing slashes to match browser Origin headers exactly
+allowed_origins = [origin.strip().rstrip('/') for origin in raw_origins if origin.strip()]
 
 # Allow CORS for Frontend
 app.add_middleware(
