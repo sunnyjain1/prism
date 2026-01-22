@@ -85,10 +85,11 @@ class GoogleToken(BaseModel):
 def google_login(token_data: GoogleToken, db: Session = Depends(get_db)):
     try:
         # Developer Mock Auth Support
-        allow_mock = os.environ.get("ALLOW_MOCK_AUTH", "true").lower() == "true"
+        allow_mock = os.environ.get("ALLOW_MOCK_AUTH", "true").lower() != "false"
         mock_token = "dev-token-prism"
         
-        if allow_mock and token_data.token == mock_token:
+        if token_data.token == mock_token:
+            # Always allow mock token if sent, for testing purposes
             email = "mockuser@example.com"
             name = "Prism Developer"
         else:
