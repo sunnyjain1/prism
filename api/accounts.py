@@ -15,7 +15,7 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/", response_model=schemas.Account)
+@router.post("", response_model=schemas.Account)
 def create_account(account: schemas.AccountCreate, db: Session = Depends(get_db)):
     db_account = models.Account(**account.dict())
     db.add(db_account)
@@ -23,7 +23,7 @@ def create_account(account: schemas.AccountCreate, db: Session = Depends(get_db)
     db.refresh(db_account)
     return db_account
 
-@router.get("/", response_model=List[schemas.Account])
+@router.get("", response_model=List[schemas.Account])
 def read_accounts(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     accounts = db.query(models.Account).offset(skip).limit(limit).all()
     return accounts

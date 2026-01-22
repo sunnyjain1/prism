@@ -23,7 +23,7 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/", response_model=schemas.Transaction)
+@router.post("", response_model=schemas.Transaction)
 def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db)):
     db_transaction = models.Transaction(**transaction.dict())
     db.add(db_transaction)
@@ -53,7 +53,7 @@ def create_transaction(transaction: schemas.TransactionCreate, db: Session = Dep
     db.refresh(db_transaction)
     return db_transaction
 
-@router.get("/", response_model=List[schemas.Transaction])
+@router.get("", response_model=List[schemas.Transaction])
 def read_transactions(
     skip: int = 0, 
     limit: int = 100, 
