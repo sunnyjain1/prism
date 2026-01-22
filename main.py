@@ -8,7 +8,7 @@ models.Base.metadata.create_all(bind=database.engine)
 user_models.Base.metadata.create_all(bind=database.engine)
 
 
-app = FastAPI(title="Prism API")
+app = FastAPI(title="Prism API", redirect_slashes=False)
 
 # Load CORS origins from environment (comma-separated) or use defaults
 default_origins = "http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000"
