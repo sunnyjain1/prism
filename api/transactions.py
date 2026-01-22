@@ -23,7 +23,7 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/", response_model=schemas.Transaction)
+@router.post("", response_model=schemas.Transaction)
 def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db)):
     db_transaction = models.Transaction(**transaction.dict())
     db.add(db_transaction)
@@ -53,7 +53,7 @@ def create_transaction(transaction: schemas.TransactionCreate, db: Session = Dep
     db.refresh(db_transaction)
     return db_transaction
 
-@router.get("/", response_model=List[schemas.Transaction])
+@router.get("", response_model=List[schemas.Transaction])
 def read_transactions(
     skip: int = 0, 
     limit: int = 100, 
@@ -76,7 +76,7 @@ def read_transactions(
     return transactions
 
 
-@router.delete("/{transaction_id}/")
+@router.delete("/{transaction_id}")
 def delete_transaction(transaction_id: str, db: Session = Depends(get_db)):
     db_transaction = db.query(models.Transaction).filter(models.Transaction.id == transaction_id).first()
     if db_transaction is None:
@@ -84,7 +84,7 @@ def delete_transaction(transaction_id: str, db: Session = Depends(get_db)):
     db.delete(db_transaction)
     db.commit()
     return {"ok": True}
-@router.get("/export/")
+@router.get("/export")
 def export_transactions(db: Session = Depends(get_db)):
     transactions = db.query(models.Transaction).order_by(models.Transaction.date.desc()).all()
     
@@ -111,7 +111,7 @@ def export_transactions(db: Session = Depends(get_db)):
         headers={"Content-Disposition": "attachment; filename=transactions.csv"}
     )
 
-@router.post("/import/")
+@router.post("/import")
 async def import_transactions(file: UploadFile = File(...), db: Session = Depends(get_db)):
     content = await file.read()
     decoded = content.decode('utf-8')
