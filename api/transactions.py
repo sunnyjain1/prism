@@ -24,8 +24,9 @@ def get_db():
         db.close()
 
 @router.post("", response_model=schemas.Transaction)
-def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db)):
+def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_transaction = models.Transaction(**transaction.dict())
+    db_transaction.owner_id = current_user.id
     db.add(db_transaction)
     
     # Balance update logic
@@ -59,9 +60,10 @@ def read_transactions(
     limit: int = 100, 
     month: Optional[int] = None, 
     year: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    query = db.query(models.Transaction)
+    query = db.query(models.Transaction).filter(models.Transaction.owner_id == current_user.id)
     
     if month is not None and year is not None:
         start_date = datetime(year, month, 1)
@@ -77,16 +79,16 @@ def read_transactions(
 
 
 @router.delete("/{transaction_id}")
-def delete_transaction(transaction_id: str, db: Session = Depends(get_db)):
-    db_transaction = db.query(models.Transaction).filter(models.Transaction.id == transaction_id).first()
+def delete_transaction(transaction_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    db_transaction = db.query(models.Transaction).filter(models.Transaction.id == transaction_id, models.Transaction.owner_id == current_user.id).first()
     if db_transaction is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     db.delete(db_transaction)
     db.commit()
     return {"ok": True}
 @router.get("/export")
-def export_transactions(db: Session = Depends(get_db)):
-    transactions = db.query(models.Transaction).order_by(models.Transaction.date.desc()).all()
+def export_transactions(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    transactions = db.query(models.Transaction).filter(models.Transaction.owner_id == current_user.id).order_by(models.Transaction.date.desc()).all()
     
     output = io.StringIO()
     writer = csv.writer(output)
@@ -112,7 +114,7 @@ def export_transactions(db: Session = Depends(get_db)):
     )
 
 @router.post("/import")
-async def import_transactions(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_transactions(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     content = await file.read()
     decoded = content.decode('utf-8')
     reader = csv.DictReader(io.StringIO(decoded))
@@ -134,7 +136,8 @@ async def import_transactions(file: UploadFile = File(...), db: Session = Depend
                 date=datetime.fromisoformat(row['date'].replace('Z', '')),
                 account_id=row['account_id'],
                 category_id=row['category_id'] if row['category_id'] else None,
-                destination_account_id=row['destination_account_id'] if row['destination_account_id'] else None
+                destination_account_id=row['destination_account_id'] if row['destination_account_id'] else None,
+                owner_id=current_user.id
             )
             db.add(db_transaction)
             

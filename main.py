@@ -23,7 +23,31 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # Log the full error for debugging (Render logs will show this)
+    import traceback
+    print(f"Global Exception caught: {exc}")
+    traceback.print_exc()
+    
+    response = JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error_type": type(exc).__name__}
+    )
+    
+    # Manually add CORS headers to the error response
+    origin = request.headers.get("origin")
+    if origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+    return response
 
 
 
