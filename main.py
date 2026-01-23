@@ -31,21 +31,30 @@ from fastapi.responses import JSONResponse
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Log the full error for debugging (Render logs will show this)
+    # Log the full error for debugging
     import traceback
-    print(f"Global Exception caught: {exc}")
+    error_msg = str(exc)
+    print(f"Global Exception caught: {error_msg}")
     traceback.print_exc()
     
-    response = JSONResponse(
-        status_code=500,
-        content={"detail": "Internal Server Error", "error_type": type(exc).__name__}
-    )
+    # Manually build the JSON response
+    content = {
+        "detail": "Internal Server Error",
+        "error_type": type(exc).__name__,
+        "error_message": error_msg  # Temporarily expose for debugging
+    }
     
-    # Manually add CORS headers to the error response
+    response = JSONResponse(status_code=500, content=content)
+    
+    # Aggressively add CORS headers to the error response
     origin = request.headers.get("origin")
-    if origin in allowed_origins:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
+    if origin:
+        # If it's a known origin, allow it
+        if any(origin.startswith(o) for o in allowed_origins):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
         
     return response
 
