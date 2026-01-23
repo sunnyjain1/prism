@@ -1,94 +1,52 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import List
-import models, schemas, database
-from api.dependencies import get_current_user, check_role
-from user_models import User, UserRole
-
-
-from datetime import datetime
-from typing import Optional
-import csv
-import io
+from typing import List, Optional
+from core.dependencies import get_db, get_current_user
+from user_models import User
+import schemas
+from services.transaction_service import TransactionService
 from fastapi.responses import StreamingResponse
-from fastapi import UploadFile, File
-import uuid
+import io
+import csv
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 @router.post("", response_model=schemas.Transaction)
-def create_transaction(transaction: schemas.TransactionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_transaction = models.Transaction(**transaction.dict())
-    db_transaction.owner_id = current_user.id
-    db.add(db_transaction)
-    
-    # Balance update logic
-    if transaction.type == schemas.TransactionType.income:
-        account = db.query(models.Account).filter(models.Account.id == transaction.account_id).first()
-        if account:
-            account.balance += transaction.amount
-    elif transaction.type == schemas.TransactionType.expense:
-        account = db.query(models.Account).filter(models.Account.id == transaction.account_id).first()
-        if account:
-            account.balance -= transaction.amount
-    elif transaction.type == schemas.TransactionType.transfer:
-        if not transaction.destination_account_id:
-            raise HTTPException(status_code=400, detail="Destination account required for transfer")
-        
-        src = db.query(models.Account).filter(models.Account.id == transaction.account_id).first()
-        dst = db.query(models.Account).filter(models.Account.id == transaction.destination_account_id).first()
-        
-        if src:
-            src.balance -= transaction.amount
-        if dst:
-            dst.balance += transaction.amount
-
-    db.commit()
-    db.refresh(db_transaction)
-    return db_transaction
+def create_transaction(
+    transaction: schemas.TransactionCreate, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    service = TransactionService(db)
+    return service.create_transaction(transaction, current_user.id)
 
 @router.get("", response_model=List[schemas.Transaction])
 def read_transactions(
-    skip: int = 0, 
-    limit: int = 100, 
     month: Optional[int] = None, 
     year: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(models.Transaction).filter(models.Transaction.owner_id == current_user.id)
-    
-    if month is not None and year is not None:
-        start_date = datetime(year, month, 1)
-        if month == 12:
-            next_month, next_year = 1, year + 1
-        else:
-            next_month, next_year = month + 1, year
-        end_date = datetime(next_year, next_month, 1)
-        query = query.filter(models.Transaction.date >= start_date, models.Transaction.date < end_date)
-    
-    transactions = query.order_by(models.Transaction.date.desc()).offset(skip).limit(limit).all()
-    return transactions
-
+    service = TransactionService(db)
+    return service.get_transactions(current_user.id, month, year)
 
 @router.delete("/{transaction_id}")
-def delete_transaction(transaction_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_transaction = db.query(models.Transaction).filter(models.Transaction.id == transaction_id, models.Transaction.owner_id == current_user.id).first()
-    if db_transaction is None:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    db.delete(db_transaction)
-    db.commit()
+def delete_transaction(
+    transaction_id: str, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    service = TransactionService(db)
+    service.delete_transaction(transaction_id, current_user.id)
     return {"ok": True}
+
 @router.get("/export")
-def export_transactions(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    transactions = db.query(models.Transaction).filter(models.Transaction.owner_id == current_user.id).order_by(models.Transaction.date.desc()).all()
+def export_transactions(
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    service = TransactionService(db)
+    transactions = service.get_transactions(current_user.id)
     
     output = io.StringIO()
     writer = csv.writer(output)
@@ -96,14 +54,8 @@ def export_transactions(db: Session = Depends(get_db), current_user: User = Depe
     
     for t in transactions:
         writer.writerow([
-            t.id, 
-            t.amount, 
-            t.type, 
-            t.description, 
-            t.date.isoformat(), 
-            t.account_id, 
-            t.category_id, 
-            t.destination_account_id
+            t.id, t.amount, t.type, t.description, t.date.isoformat(), 
+            t.account_id, t.category_id, t.destination_account_id
         ])
     
     output.seek(0)
@@ -113,51 +65,37 @@ def export_transactions(db: Session = Depends(get_db), current_user: User = Depe
         headers={"Content-Disposition": "attachment; filename=transactions.csv"}
     )
 
+# Import logic can be migrated to service too, but for speed let's keep it here or just refactor later.
 @router.post("/import")
-async def import_transactions(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def import_transactions(
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # This should also move to a service eventually for Clean Architecture
     content = await file.read()
     decoded = content.decode('utf-8')
     reader = csv.DictReader(io.StringIO(decoded))
     
+    service = TransactionService(db)
     imported_count = 0
     for row in reader:
-        # Simple import logic, assuming the CSV follows the exported format
         try:
-            # Check if transaction already exists to avoid duplicates
-            existing = db.query(models.Transaction).filter(models.Transaction.id == row['id']).first()
-            if existing:
-                continue
-                
-            db_transaction = models.Transaction(
-                id=row['id'] if row['id'] else str(uuid.uuid4()),
+            # Basic validation/mapping...
+            tx_in = schemas.TransactionCreate(
+                id=row['id'],
                 amount=float(row['amount']),
                 type=row['type'],
                 description=row['description'],
-                date=datetime.fromisoformat(row['date'].replace('Z', '')),
+                date=row['date'],
+                timestamp=0, # Placeholder
                 account_id=row['account_id'],
                 category_id=row['category_id'] if row['category_id'] else None,
-                destination_account_id=row['destination_account_id'] if row['destination_account_id'] else None,
-                owner_id=current_user.id
+                destination_account_id=row['destination_account_id'] if row['destination_account_id'] else None
             )
-            db.add(db_transaction)
-            
-            # Update account balances
-            if db_transaction.type == "income":
-                account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
-                if account: account.balance += db_transaction.amount
-            elif db_transaction.type == "expense":
-                account = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
-                if account: account.balance -= db_transaction.amount
-            elif db_transaction.type == "transfer":
-                src = db.query(models.Account).filter(models.Account.id == db_transaction.account_id).first()
-                dst = db.query(models.Account).filter(models.Account.id == db_transaction.destination_account_id).first()
-                if src: src.balance -= db_transaction.amount
-                if dst: dst.balance += db_transaction.amount
-            
+            service.create_transaction(tx_in, current_user.id)
             imported_count += 1
-        except Exception as e:
-            print(f"Error importing row: {e}")
+        except Exception:
             continue
             
-    db.commit()
     return {"message": f"Successfully imported {imported_count} transactions"}
