@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import models, user_models, database
-from api import transactions, accounts, categories, auth
+from api import transactions, accounts, categories, auth, bulk_upload
 from core.config import settings
 from core.exceptions import global_exception_handler
 
@@ -33,6 +33,7 @@ app.include_router(auth.router)
 app.include_router(transactions.router)
 app.include_router(accounts.router)
 app.include_router(categories.router)
+app.include_router(bulk_upload.router)
 
 @app.get("/")
 def read_root():
