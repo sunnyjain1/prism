@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from models import Transaction
 from repositories.base_repository import BaseRepository
 from datetime import datetime
@@ -16,7 +16,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         month: Optional[int] = None,
         year: Optional[int] = None
     ) -> List[Transaction]:
-        query = self.db.query(self.model).filter(self.model.owner_id == owner_id)
+        query = self.db.query(self.model)\
+            .options(joinedload(self.model.category), joinedload(self.model.account))\
+            .filter(self.model.owner_id == owner_id)
         
         if month is not None and year is not None:
             start_date = datetime(year, month, 1)

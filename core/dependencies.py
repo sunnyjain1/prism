@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from user_models import User
+from user_models import User, UserRole
 from core.config import settings
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
@@ -41,3 +41,13 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+def check_role(roles: list[UserRole]):
+    def role_checker(user: User = Depends(get_current_user)):
+        if user.role not in [role.value if hasattr(role, 'value') else role for role in roles]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have enough permissions to perform this action"
+            )
+        return user
+    return role_checker

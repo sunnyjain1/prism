@@ -65,3 +65,23 @@ class Account(AccountBase):
     class Config:
         from_attributes = True
 
+
+class GoogleToken(BaseModel):
+    token: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    full_name: str = ""
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    role: str
+    class Config:
+        from_attributes = True

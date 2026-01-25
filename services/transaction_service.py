@@ -18,17 +18,32 @@ class TransactionService:
         # Create the transaction record
         tx_data = transaction_in.dict()
         tx_data["owner_id"] = owner_id
+        
+        # Validation checks
+        self._validate_ownership(tx_data, owner_id)
+        
         db_transaction = self.repo.create(tx_data)
 
         # Business Logic: Update account balances
-        self._update_balances(db_transaction)
+        self._update_balances(db_transaction, owner_id)
         
         return db_transaction
 
-    def _update_balances(self, tx: Transaction):
+    def _validate_ownership(self, tx_data: dict, owner_id: str):
+        if tx_data.get("account_id"):
+            acc = self.db.query(Account).filter(Account.id == tx_data["account_id"], Account.owner_id == owner_id).first()
+            if not acc:
+                raise HTTPException(status_code=403, detail="Not authorized to use this account")
+        
+        if tx_data.get("destination_account_id"):
+            acc = self.db.query(Account).filter(Account.id == tx_data["destination_account_id"], Account.owner_id == owner_id).first()
+            if not acc:
+                raise HTTPException(status_code=403, detail="Not authorized to use this destination account")
+
+    def _update_balances(self, tx: Transaction, owner_id: str):
         # Update source account
         if tx.account_id:
-            account = self.db.query(Account).filter(Account.id == tx.account_id).first()
+            account = self.db.query(Account).filter(Account.id == tx.account_id, Account.owner_id == owner_id).first()
             if account:
                 if tx.type == TransactionType.income:
                     account.balance += tx.amount
@@ -39,10 +54,11 @@ class TransactionService:
 
         # Update destination account for transfers
         if tx.type == TransactionType.transfer and tx.destination_account_id:
-            dst_account = self.db.query(Account).filter(Account.id == tx.destination_account_id).first()
+            dst_account = self.db.query(Account).filter(Account.id == tx.destination_account_id, Account.owner_id == owner_id).first()
             if dst_account:
                 dst_account.balance += tx.amount
 
+        # Commit all changes (including the creation from repo)
         self.db.commit()
 
     def get_transactions(self, owner_id: str, month: Optional[int] = None, year: Optional[int] = None) -> List[Transaction]:
