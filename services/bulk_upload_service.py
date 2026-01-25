@@ -21,7 +21,8 @@ class BulkUploadService:
         file: UploadFile, 
         source_type: str, 
         owner_id: str,
-        target_account_id: Optional[str] = None
+        target_account_id: Optional[str] = None,
+        currency: str = "USD"
     ) -> dict:
         importer = self.importers.get(source_type)
         if not importer:

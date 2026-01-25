@@ -12,6 +12,7 @@ async def bulk_upload_file(
     file: UploadFile = File(...),
     source_type: str = Form(...),
     account_id: Optional[str] = Form(None),
+    currency: str = Form("USD"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -20,5 +21,6 @@ async def bulk_upload_file(
         file=file,
         source_type=source_type,
         owner_id=current_user.id,
-        target_account_id=account_id
+        target_account_id=account_id,
+        currency=currency
     )
