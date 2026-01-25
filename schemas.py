@@ -37,10 +37,23 @@ class TransactionBase(BaseModel):
     timestamp: int
     account_id: Optional[str] = None
     category_id: Optional[str] = None
+    category_id: Optional[str] = None
     destination_account_id: Optional[str] = None
+    notes: Optional[str] = None
 
 class TransactionCreate(TransactionBase):
     id: str
+
+class TransactionUpdate(BaseModel):
+    amount: Optional[float] = None
+    type: Optional[TransactionType] = None
+    description: Optional[str] = None
+    merchant: Optional[str] = None
+    date: Optional[datetime] = None
+    account_id: Optional[str] = None
+    category_id: Optional[str] = None
+    destination_account_id: Optional[str] = None
+    notes: Optional[str] = None
 
 class Transaction(TransactionBase):
     id: str

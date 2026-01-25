@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from core.dependencies import get_db, get_current_user
@@ -24,11 +24,41 @@ def create_transaction(
 def read_transactions(
     month: Optional[int] = None, 
     year: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    category_ids: Optional[List[str]] = Query(None),
+    account_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     service = TransactionService(db)
-    return service.get_transactions(current_user.id, month, year)
+    
+    # helper for date parsing
+    from datetime import datetime
+    s_date = datetime.fromisoformat(start_date) if start_date else None
+    e_date = datetime.fromisoformat(end_date) if end_date else None
+    
+    return service.get_transactions(current_user.id, month, year, s_date, e_date, search, category_ids, account_id)
+
+@router.get("/history")
+def get_history(
+    months: int = 6, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    service = TransactionService(db)
+    return service.get_monthly_history(current_user.id, months)
+
+@router.put("/{transaction_id}", response_model=schemas.Transaction)
+def update_transaction(
+    transaction_id: str,
+    transaction: schemas.TransactionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = TransactionService(db)
+    return service.update_transaction(transaction_id, transaction, current_user.id)
 
 @router.delete("/{transaction_id}")
 def delete_transaction(

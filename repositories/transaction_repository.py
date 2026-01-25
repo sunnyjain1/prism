@@ -13,21 +13,35 @@ class TransactionRepository(BaseRepository[Transaction]):
         owner_id: str, 
         skip: int = 0, 
         limit: int = 100,
-        month: Optional[int] = None,
-        year: Optional[int] = None
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        search: Optional[str] = None,
+        category_ids: Optional[List[str]] = None,
+        account_id: Optional[str] = None
     ) -> List[Transaction]:
         query = self.db.query(self.model)\
             .options(joinedload(self.model.category), joinedload(self.model.account))\
             .filter(self.model.owner_id == owner_id)
         
-        if month is not None and year is not None:
-            start_date = datetime(year, month, 1)
-            # Simplistic next month calculation
-            if month == 12:
-                end_date = datetime(year + 1, 1, 1)
-            else:
-                end_date = datetime(year, month + 1, 1)
-            query = query.filter(self.model.date >= start_date, self.model.date < end_date)
+        if start_date:
+            query = query.filter(self.model.date >= start_date)
+        
+        if end_date:
+            query = query.filter(self.model.date <= end_date)
+            
+        if category_ids:
+            query = query.filter(self.model.category_id.in_(category_ids))
+
+        if account_id:
+            query = query.filter(self.model.account_id == account_id)
+            
+        if search:
+            search_pattern = f"%{search}%"
+            # Case insensitive search on description or notes
+            query = query.filter(
+                (self.model.description.ilike(search_pattern)) | 
+                (self.model.notes.ilike(search_pattern))
+            )
             
         return query.order_by(self.model.date.desc()).offset(skip).limit(limit).all()
 

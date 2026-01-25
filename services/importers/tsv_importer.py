@@ -44,15 +44,22 @@ class MoneyManagerImporter(BaseImporter):
                 type_str = str(row.get('Income/Expense', 'Expense')).lower()
                 tx_type = TransactionType.income if type_str == 'income' else TransactionType.expense
                 
-                description = str(row.get('Note', row.get('Description', 'MM Import')))
-                if pd.isna(description) or description == 'nan':
-                    description = str(row.get('Category', 'Transaction'))
+                # Description & Notes logic
+                # Ideally: Description -> Payee/Title, Note -> Details
+                raw_desc = row.get('Description', row.get('Category', 'Transaction'))
+                if pd.isna(raw_desc) or str(raw_desc) == 'nan':
+                    raw_desc = 'Transaction'
+                description = str(raw_desc)
+                
+                raw_note = row.get('Note')
+                notes = str(raw_note) if not pd.isna(raw_note) and str(raw_note) != 'nan' else None
 
                 tx = TransactionCreate(
                     id=str(uuid.uuid4()),
                     amount=abs(amount),
                     type=tx_type,
                     description=description,
+                    notes=notes,
                     date=dt.isoformat(),
                     timestamp=int(dt.timestamp()),
                     account_id=None,

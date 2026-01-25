@@ -57,6 +57,7 @@ class Transaction(Base):
     merchant = Column(String, nullable=True)
     date = Column(DateTime, default=datetime.datetime.utcnow)
     timestamp = Column(BigInteger) # For sync logic if needed
+    notes = Column(String, nullable=True)
     
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
 
