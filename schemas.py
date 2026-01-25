@@ -37,7 +37,6 @@ class TransactionBase(BaseModel):
     timestamp: int
     account_id: Optional[str] = None
     category_id: Optional[str] = None
-    category_id: Optional[str] = None
     destination_account_id: Optional[str] = None
     notes: Optional[str] = None
 
