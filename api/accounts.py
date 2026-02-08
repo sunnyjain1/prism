@@ -33,3 +33,13 @@ def read_account(
 ):
     service = AccountService(db)
     return service.get_account(account_id, current_user.id)
+
+@router.delete("/{account_id}")
+def delete_account(
+    account_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AccountService(db)
+    service.delete_account(account_id, current_user.id)
+    return {"message": "Account deleted successfully"}
