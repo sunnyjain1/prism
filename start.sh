@@ -23,7 +23,7 @@ echo "Verifying database migration status..."
 # However, many people just use a script to check.
 
 echo "Applying migrations..."
-./venv/bin/alembic upgrade head
+alembic upgrade head
 
 echo "Starting application server..."
-./venv/bin/uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
