@@ -46,6 +46,8 @@ def run_migrations_offline() -> None:
 
     """
     url = os.getenv("DATABASE_URL", settings.SQLALCHEMY_DATABASE_URL)
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
     if url.startswith("sqlite"):
         # Handle SQLite relative paths if necessary or just use as is
         pass
@@ -68,7 +70,10 @@ def run_migrations_online() -> None:
 
     """
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = os.getenv("DATABASE_URL", settings.SQLALCHEMY_DATABASE_URL)
+    url = os.getenv("DATABASE_URL", settings.SQLALCHEMY_DATABASE_URL)
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    configuration["sqlalchemy.url"] = url
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
