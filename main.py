@@ -5,10 +5,7 @@ from api import transactions, accounts, categories, auth, bulk_upload
 from core.config import settings
 from core.exceptions import global_exception_handler
 
-# Database Initialization
-# In a larger system, migrations (Alembic) should handle this
-models.Base.metadata.create_all(bind=database.engine)
-user_models.Base.metadata.create_all(bind=database.engine)
+# Database initialization is now handled by Alembic migrations in start.sh
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
