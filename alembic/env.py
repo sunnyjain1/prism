@@ -45,7 +45,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = settings.SQLALCHEMY_DATABASE_URL
+    url = os.getenv("DATABASE_URL", settings.SQLALCHEMY_DATABASE_URL)
     if url.startswith("sqlite"):
         # Handle SQLite relative paths if necessary or just use as is
         pass
@@ -68,7 +68,7 @@ def run_migrations_online() -> None:
 
     """
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.SQLALCHEMY_DATABASE_URL
+    configuration["sqlalchemy.url"] = os.getenv("DATABASE_URL", settings.SQLALCHEMY_DATABASE_URL)
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
