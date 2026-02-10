@@ -300,10 +300,10 @@ class MoneyManagerImporter(BaseImporter):
         return tx
     
     def _parse_description(self, row: pd.Series, column_mapping: Dict[str, str]) -> str:
-        """Parse description from row."""
-        desc_col = column_mapping.get('description')
-        if desc_col and not pd.isna(row.get(desc_col)):
-            return self.clean_description(row.get(desc_col))
+        """Parse description from row - Swapped to use 'note' column."""
+        note_col = column_mapping.get('note')
+        if note_col and not pd.isna(row.get(note_col)):
+            return self.clean_description(row.get(note_col))
         
         # Fallback to category
         cat_col = column_mapping.get('category')
@@ -313,15 +313,15 @@ class MoneyManagerImporter(BaseImporter):
         return "Transaction"
     
     def _parse_notes(self, row: pd.Series, column_mapping: Dict[str, str]) -> Optional[str]:
-        """Parse notes from row."""
+        """Parse notes from row - Swapped to use 'description' column."""
         notes_parts = []
         
-        # Add note column if exists
-        note_col = column_mapping.get('note')
-        if note_col and not pd.isna(row.get(note_col)):
-            note_val = str(row.get(note_col)).strip()
-            if note_val and note_val.lower() not in ['nan', 'none', '']:
-                notes_parts.append(note_val)
+        # Add description column if exists
+        desc_col = column_mapping.get('description')
+        if desc_col and not pd.isna(row.get(desc_col)):
+            desc_val = str(row.get(desc_col)).strip()
+            if desc_val and desc_val.lower() not in ['nan', 'none', '']:
+                notes_parts.append(desc_val)
         
         # Add category/subcategory if exists
         cat_col = column_mapping.get('category')

@@ -71,7 +71,9 @@ class TransactionService:
         end_date: Optional[datetime] = None,
         search: Optional[str] = None,
         category_ids: Optional[List[str]] = None,
-        account_id: Optional[str] = None
+        account_id: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100
     ) -> List[Transaction]:
         # Handle legacy month/year if provided and dates are not
         s_date = start_date
@@ -91,7 +93,9 @@ class TransactionService:
             end_date=e_date, 
             search=search,
             category_ids=category_ids,
-            account_id=account_id
+            account_id=account_id,
+            skip=skip,
+            limit=limit
         )
 
     def update_transaction(self, id: str, tx_update: TransactionCreate, owner_id: str) -> Transaction:
@@ -155,14 +159,21 @@ class TransactionService:
         
         return self.repo.remove(tx.id)
 
-    def get_monthly_history(self, owner_id: str, months: int = 6):
+    def get_monthly_history(self, owner_id: str, months: int = 6, end_month: Optional[int] = None, end_year: Optional[int] = None):
         from datetime import datetime, timedelta
         
-        # Calculate start date (approx 30 days * months)
-        # Or better: set start_date to 1st of (current_month - months)
-        now = datetime.now()
+        # Calculate start date based on end date (default now)
+        if end_month and end_year:
+            # Set end_date to the first of the month AFTER end_month, or the first of this month but end of it
+            if end_month == 12:
+                end_date = datetime(end_year + 1, 1, 1)
+            else:
+                end_date = datetime(end_year, end_month + 1, 1)
+        else:
+            end_date = datetime.now()
+
         # For simplicity, just grab last N*31 days to ensure coverage
-        start_date = now - timedelta(days=months * 31)
+        start_date = end_date - timedelta(days=months * 31)
         
         txs = self.repo.get_by_owner(owner_id, start_date=start_date, limit=10000) # Ensure we get enough
         

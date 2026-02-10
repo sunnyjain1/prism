@@ -29,6 +29,8 @@ def read_transactions(
     search: Optional[str] = None,
     category_ids: Optional[List[str]] = Query(None),
     account_id: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -39,16 +41,18 @@ def read_transactions(
     s_date = datetime.fromisoformat(start_date) if start_date else None
     e_date = datetime.fromisoformat(end_date) if end_date else None
     
-    return service.get_transactions(current_user.id, month, year, s_date, e_date, search, category_ids, account_id)
+    return service.get_transactions(current_user.id, month, year, s_date, e_date, search, category_ids, account_id, skip, limit)
 
 @router.get("/history")
 def get_history(
     months: int = 6, 
+    month: Optional[int] = None,
+    year: Optional[int] = None,
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
     service = TransactionService(db)
-    return service.get_monthly_history(current_user.id, months)
+    return service.get_monthly_history(current_user.id, months, month, year)
 
 @router.put("/{transaction_id}", response_model=schemas.Transaction)
 def update_transaction(
