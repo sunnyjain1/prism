@@ -11,6 +11,11 @@ class AccountService:
         self.repo = AccountRepository(db)
 
     def create_account(self, account_in: AccountCreate, owner_id: str) -> Account:
+        # Check for duplication
+        existing = self.repo.get_by_name_and_owner(account_in.name, owner_id)
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Account with name '{account_in.name}' already exists.")
+            
         data = account_in.dict()
         data["owner_id"] = owner_id
         return self.repo.create(data)
@@ -23,3 +28,7 @@ class AccountService:
         if not account:
             raise HTTPException(status_code=404, detail="Account not found")
         return account
+
+    def delete_account(self, account_id: str, owner_id: str) -> None:
+        account = self.get_account(account_id, owner_id)
+        self.repo.remove(account_id)

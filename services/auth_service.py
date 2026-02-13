@@ -12,6 +12,7 @@ from repositories.user_repository import UserRepository
 from auth_utils import get_password_hash, verify_password, create_access_token
 from core.config import settings
 import schemas
+from services.category_service import CategoryService
 
 class AuthService:
     def __init__(self, db: Session):
@@ -30,7 +31,13 @@ class AuthService:
             "full_name": user_in.full_name,
             "role": UserRole.EDITOR.value
         }
-        return self.repo.create(user_data)
+        user = self.repo.create(user_data)
+        
+        # Seed default categories
+        cat_service = CategoryService(self.db)
+        cat_service.create_default_categories(user.id)
+        
+        return user
 
     def login(self, username: str, password: str) -> dict:
         user = self.repo.get_by_email(username)
@@ -41,7 +48,7 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        access_token = create_access_token(data={"sub": user.email})
+        access_token = create_access_token(data={"sub": user.id})
         return {"access_token": access_token, "token_type": "bearer"}
 
     def google_login(self, token: str) -> dict:
@@ -70,7 +77,11 @@ class AuthService:
                 }
                 user = self.repo.create(user_data)
                 
-            access_token = create_access_token(data={"sub": user.email})
+                # Seed default categories
+                cat_service = CategoryService(self.db)
+                cat_service.create_default_categories(user.id)
+                
+            access_token = create_access_token(data={"sub": user.id})
             return {"access_token": access_token, "token_type": "bearer"}
             
         except ValueError:

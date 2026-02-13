@@ -264,10 +264,10 @@ class MoneyManagerImporter(BaseImporter):
             original_amount=original_amount
         )
         
-        # Parse description
+        # Parse description (maps file's 'Note' to schema's description)
         description = self._parse_description(row, column_mapping)
         
-        # Parse notes
+        # Parse notes (maps file's 'Description' to schema's notes)
         notes = self._parse_notes(row, column_mapping)
         
         # Extract merchant
@@ -276,6 +276,12 @@ class MoneyManagerImporter(BaseImporter):
         # Extract category and account for auto-creation
         import_category = self._extract_category(row, column_mapping)
         import_account = self._extract_account(row, column_mapping)
+        
+        import_destination_account = None
+        if tx_type == TransactionType.transfer:
+            # For Money Manager transfers, the Category column often contains the destination account
+            import_destination_account = import_category
+            import_category = None # Transfers don't usually have a category in Prism schema
         
         # Create transaction
         tx = TransactionCreate(
@@ -296,14 +302,16 @@ class MoneyManagerImporter(BaseImporter):
             tx._import_category = import_category
         if import_account:
             tx._import_account = import_account
+        if import_destination_account:
+            tx._import_destination_account = import_destination_account
         
         return tx
     
     def _parse_description(self, row: pd.Series, column_mapping: Dict[str, str]) -> str:
-        """Parse description from row."""
-        desc_col = column_mapping.get('description')
-        if desc_col and not pd.isna(row.get(desc_col)):
-            return self.clean_description(row.get(desc_col))
+        """Parse description from row - Swapped to use 'note' column."""
+        note_col = column_mapping.get('note')
+        if note_col and not pd.isna(row.get(note_col)):
+            return self.clean_description(row.get(note_col))
         
         # Fallback to category
         cat_col = column_mapping.get('category')
@@ -313,15 +321,15 @@ class MoneyManagerImporter(BaseImporter):
         return "Transaction"
     
     def _parse_notes(self, row: pd.Series, column_mapping: Dict[str, str]) -> Optional[str]:
-        """Parse notes from row."""
+        """Parse notes from row - Swapped to use 'description' column."""
         notes_parts = []
         
-        # Add note column if exists
-        note_col = column_mapping.get('note')
-        if note_col and not pd.isna(row.get(note_col)):
-            note_val = str(row.get(note_col)).strip()
-            if note_val and note_val.lower() not in ['nan', 'none', '']:
-                notes_parts.append(note_val)
+        # Add description column if exists
+        desc_col = column_mapping.get('description')
+        if desc_col and not pd.isna(row.get(desc_col)):
+            desc_val = str(row.get(desc_col)).strip()
+            if desc_val and desc_val.lower() not in ['nan', 'none', '']:
+                notes_parts.append(desc_val)
         
         # Add category/subcategory if exists
         cat_col = column_mapping.get('category')

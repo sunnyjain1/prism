@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, BigInteger
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -43,7 +43,9 @@ class Account(Base):
     
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
 
-
+    __table_args__ = (
+        UniqueConstraint('name', 'owner_id', name='uq_account_name_owner'),
+    )
 
     transactions = relationship("Transaction", foreign_keys="Transaction.account_id", back_populates="account")
 

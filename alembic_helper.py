@@ -46,4 +46,9 @@ def auto_stamp():
         print("No existing schema detected. Ready for full migration.")
 
 if __name__ == "__main__":
-    auto_stamp()
+    try:
+        auto_stamp()
+    except Exception as e:
+        print(f"Warning: Auto-stamp helper failed: {e}")
+        # We don't exit with error here to allow 'alembic upgrade' to try anyway
+

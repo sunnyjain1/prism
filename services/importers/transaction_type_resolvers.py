@@ -102,16 +102,33 @@ class IncomeExpenseColumnResolver(TransactionTypeResolver):
         # Normalize the value
         type_str = str(type_value).lower().strip()
         
-        # Check for income indicators
-        income_indicators = ['income', 'credit', 'deposit', 'receipt', 'in', 'i']
-        if any(indicator in type_str for indicator in income_indicators):
-            return TransactionType.income
+        # Check for transfer first (most specific)
+        transfer_indicators = ['transfer', 'trans', 't']
+        if any(indicator == type_str or type_str.startswith(indicator + '-') or type_str.startswith(indicator + ' ') for indicator in transfer_indicators):
+            return TransactionType.transfer
+
+        # Check for income indicators - Use stricter matching to avoid 'expense' matching 'in'
+        income_indicators = ['income', 'credit', 'deposit', 'receipt', 'in']
+        if type_str in income_indicators or any(type_str == i for i in income_indicators):
+             return TransactionType.income
         
+        # Specific fix for 'in' vs 'expense'
+        if type_str == 'income' or type_str == 'in':
+            return TransactionType.income
+
         # Check for expense indicators
-        expense_indicators = ['expense', 'debit', 'withdrawal', 'payment', 'out', 'e', 'exp']
-        if any(indicator in type_str for indicator in expense_indicators):
+        expense_indicators = ['expense', 'debit', 'withdrawal', 'payment', 'out', 'exp']
+        if type_str in expense_indicators or any(type_str == e for e in expense_indicators):
             return TransactionType.expense
         
+        # Fallback to loose matching if exact fails, but avoid 'in' in 'expense'
+        if 'income' in type_str:
+            return TransactionType.income
+        if 'expense' in type_str:
+            return TransactionType.expense
+        if 'transfer' in type_str:
+            return TransactionType.transfer
+
         # If we can't determine, log and default to expense
         logger.warning(f"Could not determine type from value: {type_str}, defaulting to expense")
         return TransactionType.expense

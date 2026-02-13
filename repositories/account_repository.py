@@ -17,3 +17,9 @@ class AccountRepository(BaseRepository[Account]):
             self.model.id == id, 
             self.model.owner_id == owner_id
         ).first()
+
+    def get_by_name_and_owner(self, name: str, owner_id: str) -> Optional[Account]:
+        return self.db.query(self.model).filter(
+            self.model.name == name,
+            self.model.owner_id == owner_id
+        ).first()
