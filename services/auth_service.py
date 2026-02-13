@@ -48,7 +48,7 @@ class AuthService:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        access_token = create_access_token(data={"sub": user.email})
+        access_token = create_access_token(data={"sub": user.id})
         return {"access_token": access_token, "token_type": "bearer"}
 
     def google_login(self, token: str) -> dict:
@@ -81,7 +81,7 @@ class AuthService:
                 cat_service = CategoryService(self.db)
                 cat_service.create_default_categories(user.id)
                 
-            access_token = create_access_token(data={"sub": user.email})
+            access_token = create_access_token(data={"sub": user.id})
             return {"access_token": access_token, "token_type": "bearer"}
             
         except ValueError:
