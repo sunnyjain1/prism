@@ -185,11 +185,13 @@ class MoneyManagerImporter(BaseImporter):
         
         # Optional columns
         column_mapping['type'] = self._find_column(df, ['income/expense', 'type', 'transaction type', 'income expense'])
-        column_mapping['description'] = self._find_column(df, ['description', 'desc', 'memo', 'note', 'payee'])
+        # Money Manager has separate 'Description' and 'Note' columns.
+        # We detect them independently to allow proper swapping later.
+        column_mapping['description'] = self._find_column_exact(df, ['description', 'desc'])
+        column_mapping['note'] = self._find_column_exact(df, ['note', 'notes'])
         column_mapping['account'] = self._find_column(df, ['account', 'account name'])
         column_mapping['category'] = self._find_column(df, ['category', 'cat'])
         column_mapping['subcategory'] = self._find_column(df, ['subcategory', 'sub category'])
-        column_mapping['note'] = self._find_column(df, ['note', 'notes', 'memo'])
         column_mapping['currency'] = self._find_column(df, ['currency', 'curr'])
         
         result.metadata["detected_columns"] = {k: v for k, v in column_mapping.items() if v}
@@ -228,6 +230,7 @@ class MoneyManagerImporter(BaseImporter):
             return None
         
         dt = self.parse_date(date_val, [
+            "%d/%m/%Y %H:%M:%S",
             "%d/%m/%Y", "%m/%d/%Y", "%Y-%m-%d",
             "%d-%m-%Y", "%m-%d-%Y", "%Y/%m/%d"
         ])
@@ -253,14 +256,11 @@ class MoneyManagerImporter(BaseImporter):
         # Resolve transaction type using resolver chain
         # This properly handles Income/Expense column
         row_data = row.to_dict()
-        # Create column mapping with actual column names from DataFrame
-        # The resolver needs to know which columns exist to check can_handle()
-        resolver_column_mapping = {col: col for col in row_data.keys()}
         
         tx_type = self.type_resolver.resolve(
             amount=amount,
             row_data=row_data,
-            column_mapping=resolver_column_mapping,
+            column_mapping=column_mapping,
             original_amount=original_amount
         )
         
@@ -308,10 +308,22 @@ class MoneyManagerImporter(BaseImporter):
         return tx
     
     def _parse_description(self, row: pd.Series, column_mapping: Dict[str, str]) -> str:
-        """Parse description from row - Swapped to use 'note' column."""
+        """
+        Parse Prism description from row.
+        Money Manager 'Note' column → Prism 'description' (swap).
+        """
         note_col = column_mapping.get('note')
         if note_col and not pd.isna(row.get(note_col)):
-            return self.clean_description(row.get(note_col))
+            val = str(row.get(note_col)).strip()
+            if val and val.lower() not in ['nan', 'none', '']:
+                return self.clean_description(val)
+        
+        # Fallback: use description column if note is empty
+        desc_col = column_mapping.get('description')
+        if desc_col and not pd.isna(row.get(desc_col)):
+            val = str(row.get(desc_col)).strip()
+            if val and val.lower() not in ['nan', 'none', '']:
+                return self.clean_description(val)
         
         # Fallback to category
         cat_col = column_mapping.get('category')
@@ -321,28 +333,32 @@ class MoneyManagerImporter(BaseImporter):
         return "Transaction"
     
     def _parse_notes(self, row: pd.Series, column_mapping: Dict[str, str]) -> Optional[str]:
-        """Parse notes from row - Swapped to use 'description' column."""
+        """
+        Parse Prism notes from row.
+        Money Manager 'Description' column → Prism 'notes' (swap).
+        """
         notes_parts = []
         
-        # Add description column if exists
+        # Money Manager 'Description' column → Prism notes
         desc_col = column_mapping.get('description')
         if desc_col and not pd.isna(row.get(desc_col)):
             desc_val = str(row.get(desc_col)).strip()
             if desc_val and desc_val.lower() not in ['nan', 'none', '']:
                 notes_parts.append(desc_val)
         
-        # Add category/subcategory if exists
-        cat_col = column_mapping.get('category')
-        if cat_col and not pd.isna(row.get(cat_col)):
-            cat_val = str(row.get(cat_col)).strip()
-            if cat_val and cat_val.lower() not in ['nan', 'none', '']:
-                subcat_col = column_mapping.get('subcategory')
-                if subcat_col and not pd.isna(row.get(subcat_col)):
-                    subcat_val = str(row.get(subcat_col)).strip()
-                    if subcat_val and subcat_val.lower() not in ['nan', 'none', '']:
-                        notes_parts.append(f"Category: {cat_val} / {subcat_val}")
-                    else:
-                        notes_parts.append(f"Category: {cat_val}")
+        # Add subcategory info if present
+        subcat_col = column_mapping.get('subcategory')
+        if subcat_col and not pd.isna(row.get(subcat_col)):
+            subcat_val = str(row.get(subcat_col)).strip()
+            if subcat_val and subcat_val.lower() not in ['nan', 'none', '']:
+                cat_col = column_mapping.get('category')
+                cat_val = ''
+                if cat_col and not pd.isna(row.get(cat_col)):
+                    cat_val = str(row.get(cat_col)).strip()
+                if cat_val and cat_val.lower() not in ['nan', 'none', '']:
+                    notes_parts.append(f"Category: {cat_val} / {subcat_val}")
+                else:
+                    notes_parts.append(f"Subcategory: {subcat_val}")
         
         return ' | '.join(notes_parts) if notes_parts else None
     
@@ -365,9 +381,21 @@ class MoneyManagerImporter(BaseImporter):
         return None
     
     def _find_column(self, df: pd.DataFrame, possible_names: List[str]) -> Optional[str]:
-        """Find a column by trying multiple possible names."""
+        """Find a column by trying multiple possible names (substring match)."""
         for name in possible_names:
             for col in df.columns:
                 if name.lower() in col.lower():
+                    return col
+        return None
+    
+    def _find_column_exact(self, df: pd.DataFrame, possible_names: List[str]) -> Optional[str]:
+        """
+        Find a column by exact match (case-insensitive, stripped).
+        Used when substring matching could cause false positives
+        (e.g., 'note' matching inside 'description').
+        """
+        for name in possible_names:
+            for col in df.columns:
+                if col.lower().strip() == name.lower():
                     return col
         return None

@@ -97,7 +97,7 @@ class ImportEntityService:
         self,
         account_name: str,
         account_type: Optional[AccountType] = None,
-        currency: str = "USD"
+        currency: str = "INR"
     ) -> Optional[str]:
         """
         Get existing account or create a new one.

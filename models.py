@@ -34,7 +34,7 @@ class Account(Base):
     id = Column(String, primary_key=True, index=True)
     name = Column(String, index=True)
     type = Column(String) # checking, savings, credit, investment, cash
-    currency = Column(String, default="USD")
+    currency = Column(String, default="INR")
     balance = Column(Float, default=0.0)
     
     # New Phase 3 Fields

@@ -63,7 +63,7 @@ class Transaction(TransactionBase):
 class AccountBase(BaseModel):
     name: str
     type: AccountType
-    currency: str = "USD"
+    currency: str = "INR"
     balance: float = 0.0
     billing_cycle_day: int = 1
     credit_limit: Optional[float] = None

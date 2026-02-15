@@ -83,8 +83,8 @@ class DeduplicationService:
         2. Same amount (within small tolerance)
         3. Similar description
         """
-        # Check date (within 1 day)
-        date_diff = abs((tx1.date - tx2.date).days)
+        # Check date (Allow +/- 1 day for bank processing delays)
+        date_diff = abs((tx1.date.date() - tx2.date.date()).days)
         if date_diff > 1:
             return False
         
@@ -120,28 +120,20 @@ class DeduplicationService:
         transactions: List[TransactionCreate]
     ) -> List[TransactionCreate]:
         """
-        Remove duplicates within the same batch of transactions.
-        
-        Args:
-            transactions: List of transactions to deduplicate
-            
-        Returns:
-            List of unique transactions
+        Remove duplicate transactions within the same batch using a signature.
         """
-        seen = set()
-        unique = []
+        seen_signatures = set()
+        unique_transactions = []
         
         for tx in transactions:
-            # Create a signature for the transaction
-            signature = self._create_signature(tx)
-            
-            if signature not in seen:
-                seen.add(signature)
-                unique.append(tx)
+            sig = self._create_signature(tx)
+            if sig not in seen_signatures:
+                unique_transactions.append(tx)
+                seen_signatures.add(sig)
             else:
-                logger.debug(f"Removed duplicate within batch: {tx.description} - ${tx.amount} on {tx.date}")
-        
-        return unique
+                logger.info(f"Duplicate found in batch: {tx.description} - ${tx.amount} on {tx.date}")
+                
+        return unique_transactions
     
     def _create_signature(self, tx: TransactionCreate) -> str:
         """Create a signature for a transaction to detect duplicates."""

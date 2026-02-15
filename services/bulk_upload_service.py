@@ -43,22 +43,25 @@ class BulkUploadService:
         self.tx_service = TransactionService(db)
         
         # Register all importers
+        # Priority matters: specific importers should come before generic ones
         self.importers = {
+            # Specialized importers
+            "money_manager": MoneyManagerImporter(),
+            
             # Bank CSV/Excel importers
             "chase": ChaseBankImporter(),
             "bank_of_america": BankOfAmericaImporter(),
             "wells_fargo": WellsFargoImporter(),
-            "generic_bank": GenericBankImporter(),
             
             # Credit card PDF importers
             "chase_credit": ChaseCreditCardPDFImporter(),
             "amex": AmexCreditCardPDFImporter(),
             "citi": CitiCreditCardPDFImporter(),
             "capital_one": CapitalOneCreditCardPDFImporter(),
-            "generic_credit_card": GenericCreditCardPDFImporter(),
             
-            # Money Manager
-            "money_manager": MoneyManagerImporter(),
+            # Generic fallbacks (should be last)
+            "generic_bank": GenericBankImporter(),
+            "generic_credit_card": GenericCreditCardPDFImporter(),
         }
     
     async def process_upload(
@@ -67,7 +70,7 @@ class BulkUploadService:
         source_type: Optional[str] = None,
         owner_id: str = None,
         target_account_id: Optional[str] = None,
-        currency: str = "USD",
+        currency: str = "INR",
         skip_duplicates: bool = True,
         auto_detect: bool = True
     ) -> Dict[str, Any]:
@@ -135,25 +138,23 @@ class BulkUploadService:
                 "warnings": import_result.warnings
             }
         
-        # Remove duplicates within batch
-        unique_in_batch = DeduplicationService(self.db, owner_id).remove_duplicates_within_batch(
-            import_result.transactions
-        )
-        
-        if len(unique_in_batch) < len(import_result.transactions):
-            logger.info(f"Removed {len(import_result.transactions) - len(unique_in_batch)} duplicates within batch")
-        
-        # Check against existing transactions if skip_duplicates is True
-        final_transactions = unique_in_batch
+        # Deduplication logic
+        final_transactions = import_result.transactions
         duplicate_count = 0
         
         if skip_duplicates:
             dedup_service = DeduplicationService(self.db, owner_id)
-            final_transactions, duplicates = dedup_service.find_duplicates(unique_in_batch)
-            duplicate_count = len(duplicates)
             
-            if duplicates:
-                logger.info(f"Found {duplicate_count} duplicates with existing transactions")
+            # 1. Remove duplicates within batch
+            unique_in_batch = dedup_service.remove_duplicates_within_batch(final_transactions)
+            batch_dups = len(final_transactions) - len(unique_in_batch)
+            
+            # 2. Check against existing transactions
+            final_transactions, cross_duplicates = dedup_service.find_duplicates(unique_in_batch)
+            duplicate_count = len(cross_duplicates) + batch_dups
+            
+            if duplicate_count > 0:
+                logger.info(f"Skipped {duplicate_count} duplicates ({batch_dups} in batch, {len(cross_duplicates)} cross-batch)")
         
         # Create import entity service for handling missing categories/accounts
         entity_service = ImportEntityService(self.db, owner_id)
@@ -183,6 +184,15 @@ class BulkUploadService:
                 )
                 if account_id:
                     tx.account_id = account_id
+            
+            # Handle destination account for transfers (from Money Manager's category column)
+            if hasattr(tx, '_import_destination_account') and tx._import_destination_account:
+                dest_account_id = entity_service.get_or_create_account(
+                    tx._import_destination_account,
+                    currency=currency
+                )
+                if dest_account_id:
+                    tx.destination_account_id = dest_account_id
         
         # Import transactions
         imported_count = 0

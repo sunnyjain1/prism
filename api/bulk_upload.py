@@ -12,7 +12,7 @@ async def bulk_upload_file(
     file: UploadFile = File(...),
     source_type: Optional[str] = Form(None),
     account_id: Optional[str] = Form(None),
-    currency: str = Form("USD"),
+    currency: str = Form("INR"),
     skip_duplicates: bool = Form(True),
     auto_detect: bool = Form(True),
     db: Session = Depends(get_db),

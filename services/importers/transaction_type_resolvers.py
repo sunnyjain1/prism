@@ -81,53 +81,64 @@ class IncomeExpenseColumnResolver(TransactionTypeResolver):
             'transaction type', 'tx_type', 'income expense'
         ]
         
-        # Find the type column
+        # 1. Try to find the column from mapping
         type_col = None
-        for col_name in column_mapping.keys():
-            col_lower = str(col_name).lower().strip()
-            if any(type_name in col_lower for type_name in type_column_names):
-                type_col = col_name
+        
+        # Priority 1: Explicit mapping from importer
+        for logical_name in ['type', 'income/expense', 'income_expense', 'income expense', 'transaction type']:
+            if logical_name in column_mapping:
+                type_col = column_mapping[logical_name]
                 break
         
+        # Priority 2: Substring search in mapping keys (backward compatibility/generic use)
         if not type_col:
-            logger.warning("Income/Expense column not found despite can_handle returning True")
-            return TransactionType.expense  # Default fallback
+            for col_name in column_mapping.keys():
+                col_lower = str(col_name).lower().strip()
+                if any(type_name in col_lower for type_name in type_column_names):
+                    type_col = col_name
+                    break
+        
+        if not type_col:
+            logger.warning("Income/Expense column not found in mapping")
+            return TransactionType.expense
         
         # Get the value
         type_value = row_data.get(type_col)
         if type_value is None:
-            logger.warning(f"Type column {type_col} has None value")
+            # Maybe the mapping key was already the physical column name
+            # This handles cases where column_mapping is {col: col}
+            type_value = row_data.get(type_col) # Redundant but clear
+            
+        if type_value is None:
+            logger.warning(f"Type column '{type_col}' not found in row data")
             return TransactionType.expense
         
         # Normalize the value
         type_str = str(type_value).lower().strip()
         
         # Check for transfer first (most specific)
-        transfer_indicators = ['transfer', 'trans', 't']
-        if any(indicator == type_str or type_str.startswith(indicator + '-') or type_str.startswith(indicator + ' ') for indicator in transfer_indicators):
+        # Money Manager uses: "Transfer-Out", "Transfer-In", "Transfer"
+        transfer_indicators = ['transfer-out', 'transfer-in', 'transfer out', 'transfer in', 'transfer']
+        if any(type_str == indicator or type_str.startswith(indicator) for indicator in transfer_indicators):
             return TransactionType.transfer
 
-        # Check for income indicators - Use stricter matching to avoid 'expense' matching 'in'
+        # Check for income indicators
         income_indicators = ['income', 'credit', 'deposit', 'receipt', 'in']
-        if type_str in income_indicators or any(type_str == i for i in income_indicators):
+        if type_str in income_indicators:
              return TransactionType.income
-        
-        # Specific fix for 'in' vs 'expense'
-        if type_str == 'income' or type_str == 'in':
-            return TransactionType.income
 
         # Check for expense indicators
         expense_indicators = ['expense', 'debit', 'withdrawal', 'payment', 'out', 'exp']
-        if type_str in expense_indicators or any(type_str == e for e in expense_indicators):
+        if type_str in expense_indicators:
             return TransactionType.expense
         
-        # Fallback to loose matching if exact fails, but avoid 'in' in 'expense'
+        # Fallback to loose matching
+        if 'transfer' in type_str:
+            return TransactionType.transfer
         if 'income' in type_str:
             return TransactionType.income
         if 'expense' in type_str:
             return TransactionType.expense
-        if 'transfer' in type_str:
-            return TransactionType.transfer
 
         # If we can't determine, log and default to expense
         logger.warning(f"Could not determine type from value: {type_str}, defaulting to expense")
@@ -187,13 +198,20 @@ class DebitCreditColumnResolver(TransactionTypeResolver):
         """Resolve from Debit/Credit column."""
         debit_credit_names = ['debit', 'credit', 'dr', 'cr', 'debit/credit']
         
-        # Find the column
+        # 1. Try to find column from mapping
         dc_col = None
-        for col_name in column_mapping.keys():
-            col_lower = str(col_name).lower().strip()
-            if any(name in col_lower for name in debit_credit_names):
-                dc_col = col_name
+        for logical_name in ['debit', 'credit', 'dr', 'cr', 'debit/credit']:
+            if logical_name in column_mapping:
+                dc_col = column_mapping[logical_name]
                 break
+                
+        # 2. Substring search
+        if not dc_col:
+            for col_name in column_mapping.keys():
+                col_lower = str(col_name).lower().strip()
+                if any(name in col_lower for name in debit_credit_names):
+                    dc_col = col_name
+                    break
         
         if not dc_col:
             return TransactionType.expense

@@ -194,3 +194,29 @@ class TransactionService:
                 
         # Return sorted list
         return sorted(history.values(), key=lambda x: x["month"])
+    def get_transaction_summary(self, owner_id: str, month: int, year: int):
+        from datetime import datetime
+        from sqlalchemy import func
+        
+        start_date = datetime(year, month, 1)
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1)
+        else:
+            end_date = datetime(year, month + 1, 1)
+        
+        # Query for income/expense grouped by currency
+        results = (
+            self.db.query(
+                Transaction.type,
+                Account.currency,
+                func.sum(Transaction.amount).label("total")
+            )
+            .join(Account, Transaction.account_id == Account.id)
+            .filter(Transaction.owner_id == owner_id)
+            .filter(Transaction.date >= start_date)
+            .filter(Transaction.date < end_date)
+            .group_by(Transaction.type, Account.currency)
+            .all()
+        )
+        
+        return [{"type": r[0], "currency": r[1], "total": r[2]} for r in results]

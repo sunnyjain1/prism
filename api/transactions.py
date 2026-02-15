@@ -43,6 +43,16 @@ def read_transactions(
     
     return service.get_transactions(current_user.id, month, year, s_date, e_date, search, category_ids, account_id, skip, limit)
 
+@router.get("/summary")
+def get_summary(
+    month: int,
+    year: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = TransactionService(db)
+    return service.get_transaction_summary(current_user.id, month, year)
+
 @router.get("/history")
 def get_history(
     months: int = 6, 

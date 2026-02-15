@@ -80,7 +80,7 @@ class BaseImporter(ABC):
         """
         pass
     
-    def normalize_amount(self, amount: Any, currency: str = "USD") -> float:
+    def normalize_amount(self, amount: Any, currency: str = "INR") -> float:
         """Normalize amount from various formats to float."""
         if amount is None:
             return 0.0
@@ -123,22 +123,34 @@ class BaseImporter(ABC):
         if isinstance(date_value, datetime):
             return date_value
         
-        # Try pandas to_datetime first (handles many formats)
+        # 1. Try specific formats first if provided (more precise)
+        if isinstance(date_value, str) and formats:
+            for fmt in formats:
+                try:
+                    return datetime.strptime(date_value.strip(), fmt)
+                except ValueError:
+                    continue
+        
+        # 2. Try pandas to_datetime (handles many formats)
         try:
             import pandas as pd
-            dt = pd.to_datetime(date_value)
+            # Use dayfirst=True to prioritize DD/MM over MM/DD for ambiguous dates
+            dt = pd.to_datetime(date_value, dayfirst=True)
             if isinstance(dt, pd.Timestamp):
                 return dt.to_pydatetime()
             return dt
         except Exception:
             pass
         
-        # Try specific formats
+        # 3. Try default fallbacks if no formats provided or they failed
         if isinstance(date_value, str):
             default_formats = [
+                "%Y-%m-%d %H:%M:%S",
+                "%d/%m/%Y %H:%M:%S",
+                "%m/%d/%Y %H:%M:%S",
                 "%Y-%m-%d",
-                "%m/%d/%Y",
                 "%d/%m/%Y",
+                "%m/%d/%Y",
                 "%Y/%m/%d",
                 "%m-%d-%Y",
                 "%d-%m-%Y",
@@ -148,8 +160,7 @@ class BaseImporter(ABC):
                 "%d %b %Y",
             ]
             
-            formats_to_try = formats or default_formats
-            for fmt in formats_to_try:
+            for fmt in default_formats:
                 try:
                     return datetime.strptime(date_value.strip(), fmt)
                 except ValueError:

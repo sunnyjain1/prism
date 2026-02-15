@@ -324,3 +324,29 @@ def test_revert_transfer_balance(transaction_service, setup_data, db_session):
     db_session.refresh(acc2)
     assert acc1.balance == 1000.0
     assert acc2.balance == 5000.0
+
+def test_get_transaction_summary(transaction_service, setup_data, db_session):
+    user, acc1, _, cat1 = setup_data
+    # Create income and expense transactions for Jan 2025
+    tx1 = TransactionCreate(id="tx_sum1", amount=500.0, type=TransactionType.income, description="Salary", date=datetime(2025, 1, 15), timestamp=1, account_id=acc1.id)
+    tx2 = TransactionCreate(id="tx_sum2", amount=200.0, type=TransactionType.expense, description="Groceries", date=datetime(2025, 1, 20), timestamp=2, account_id=acc1.id, category_id=cat1.id)
+    tx3 = TransactionCreate(id="tx_sum3", amount=100.0, type=TransactionType.expense, description="Coffee", date=datetime(2025, 1, 25), timestamp=3, account_id=acc1.id)
+    # Transaction outside the target month (Feb)
+    tx4 = TransactionCreate(id="tx_sum4", amount=999.0, type=TransactionType.income, description="Bonus", date=datetime(2025, 2, 1), timestamp=4, account_id=acc1.id)
+    
+    for tx in [tx1, tx2, tx3, tx4]:
+        transaction_service.create_transaction(tx, user.id)
+    
+    summary = transaction_service.get_transaction_summary(user.id, month=1, year=2025)
+    
+    # Should have entries for income and expense, grouped by currency
+    income_entries = [s for s in summary if s["type"] == "income"]
+    expense_entries = [s for s in summary if s["type"] == "expense"]
+    
+    assert len(income_entries) == 1
+    assert income_entries[0]["total"] == 500.0
+    assert income_entries[0]["currency"] == "USD"  # acc1 currency
+    
+    assert len(expense_entries) == 1
+    assert expense_entries[0]["total"] == 300.0  # 200 + 100
+
