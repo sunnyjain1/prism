@@ -4,7 +4,7 @@ from models import Transaction, Account, TransactionType
 from schemas import TransactionCreate
 from repositories.transaction_repository import TransactionRepository
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class TransactionService:
     def __init__(self, db: Session):
@@ -80,12 +80,11 @@ class TransactionService:
         e_date = end_date
         
         if month and year and not s_date:
-            from datetime import datetime
             s_date = datetime(year, month, 1)
             if month == 12:
-                e_date = datetime(year + 1, 1, 1)
+                e_date = datetime(year + 1, 1, 1) - timedelta(microseconds=1)
             else:
-                e_date = datetime(year, month + 1, 1)
+                e_date = datetime(year, month + 1, 1) - timedelta(microseconds=1)
                 
         return self.repo.get_by_owner(
             owner_id=owner_id, 
@@ -96,6 +95,36 @@ class TransactionService:
             account_id=account_id,
             skip=skip,
             limit=limit
+        )
+
+    def aggregate_transactions(
+        self,
+        owner_id: str,
+        month: Optional[int] = None,
+        year: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        search: Optional[str] = None,
+        category_ids: Optional[List[str]] = None,
+        account_id: Optional[str] = None
+    ) -> dict:
+        s_date = start_date
+        e_date = end_date
+
+        if month and year and not s_date:
+            s_date = datetime(year, month, 1)
+            if month == 12:
+                e_date = datetime(year + 1, 1, 1) - timedelta(microseconds=1)
+            else:
+                e_date = datetime(year, month + 1, 1) - timedelta(microseconds=1)
+
+        return self.repo.aggregate_by_owner(
+            owner_id=owner_id,
+            start_date=s_date,
+            end_date=e_date,
+            search=search,
+            category_ids=category_ids,
+            account_id=account_id
         )
 
     def update_transaction(self, id: str, tx_update: TransactionCreate, owner_id: str) -> Transaction:

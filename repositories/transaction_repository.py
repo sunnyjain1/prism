@@ -1,5 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from models import Transaction
 from repositories.base_repository import BaseRepository
 from datetime import datetime
@@ -33,7 +34,12 @@ class TransactionRepository(BaseRepository[Transaction]):
             query = query.filter(self.model.category_id.in_(category_ids))
 
         if account_id:
-            query = query.filter(self.model.account_id == account_id)
+            query = query.filter(
+                or_(
+                    self.model.account_id == account_id,
+                    self.model.destination_account_id == account_id
+                )
+            )
             
         if search:
             search_pattern = f"%{search}%"
@@ -50,3 +56,47 @@ class TransactionRepository(BaseRepository[Transaction]):
             self.model.id == id, 
             self.model.owner_id == owner_id
         ).first()
+
+    def aggregate_by_owner(
+        self,
+        owner_id: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        search: Optional[str] = None,
+        category_ids: Optional[List[str]] = None,
+        account_id: Optional[str] = None
+    ) -> dict:
+        from sqlalchemy import func, case
+
+        query = self.db.query(
+            func.count(self.model.id).label('count'),
+            func.coalesce(func.sum(case((self.model.type == 'income', self.model.amount), else_=0)), 0).label('total_income'),
+            func.coalesce(func.sum(case((self.model.type == 'expense', self.model.amount), else_=0)), 0).label('total_expense')
+        ).filter(self.model.owner_id == owner_id)
+
+        if start_date:
+            query = query.filter(self.model.date >= start_date)
+        if end_date:
+            query = query.filter(self.model.date <= end_date)
+        if category_ids:
+            query = query.filter(self.model.category_id.in_(category_ids))
+        if account_id:
+            query = query.filter(
+                or_(
+                    self.model.account_id == account_id,
+                    self.model.destination_account_id == account_id
+                )
+            )
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                (self.model.description.ilike(search_pattern)) |
+                (self.model.notes.ilike(search_pattern))
+            )
+
+        row = query.one()
+        return {
+            'count': row.count,
+            'total_income': float(row.total_income),
+            'total_expense': float(row.total_expense)
+        }

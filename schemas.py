@@ -71,6 +71,11 @@ class AccountBase(BaseModel):
 class AccountCreate(AccountBase):
     id: str
 
+class AccountUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[AccountType] = None
+    currency: Optional[str] = None
+
 class Account(AccountBase):
     id: str
     transactions: List[Transaction] = []

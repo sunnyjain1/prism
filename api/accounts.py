@@ -34,6 +34,16 @@ def read_account(
     service = AccountService(db)
     return service.get_account(account_id, current_user.id)
 
+@router.put("/{account_id}", response_model=schemas.Account)
+def update_account(
+    account_id: str,
+    account: schemas.AccountUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AccountService(db)
+    return service.update_account(account_id, account.dict(exclude_unset=True), current_user.id)
+
 @router.delete("/{account_id}")
 def delete_account(
     account_id: str,

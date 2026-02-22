@@ -6,10 +6,18 @@ from user_models import User
 import schemas
 from services.transaction_service import TransactionService
 from fastapi.responses import StreamingResponse
+from datetime import datetime, time
 import io
 import csv
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
+
+def _parse_date(date_str: str, end_of_day: bool = False) -> datetime:
+    """Parse a date string. If it's date-only and end_of_day is True, set to 23:59:59.999999."""
+    dt = datetime.fromisoformat(date_str)
+    if end_of_day and 'T' not in date_str and dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+        dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    return dt
 
 @router.post("", response_model=schemas.Transaction)
 def create_transaction(
@@ -36,10 +44,8 @@ def read_transactions(
 ):
     service = TransactionService(db)
     
-    # helper for date parsing
-    from datetime import datetime
-    s_date = datetime.fromisoformat(start_date) if start_date else None
-    e_date = datetime.fromisoformat(end_date) if end_date else None
+    s_date = _parse_date(start_date) if start_date else None
+    e_date = _parse_date(end_date, end_of_day=True) if end_date else None
     
     return service.get_transactions(current_user.id, month, year, s_date, e_date, search, category_ids, account_id, skip, limit)
 
@@ -52,6 +58,25 @@ def get_summary(
 ):
     service = TransactionService(db)
     return service.get_transaction_summary(current_user.id, month, year)
+
+@router.get("/aggregate")
+def aggregate_transactions(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    category_ids: Optional[List[str]] = Query(None),
+    account_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = TransactionService(db)
+    s_date = _parse_date(start_date) if start_date else None
+    e_date = _parse_date(end_date, end_of_day=True) if end_date else None
+    return service.aggregate_transactions(
+        current_user.id, month, year, s_date, e_date, search, category_ids, account_id
+    )
 
 @router.get("/history")
 def get_history(

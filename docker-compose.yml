@@ -1,0 +1,47 @@
+# ── Prism Dev Stack ─────────────────────────────────────────────
+# Run both backend and UI with a single command:
+#   docker compose up --build
+#
+# The UI repo path is configurable — set PRISM_UI_PATH in .env
+# (defaults to ../prism-ui)
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app                    # hot-reload: sync source code
+      - /app/venv                 # exclude venv from mount
+      - prism-db:/app/data        # persist SQLite DB
+    environment:
+      - DATABASE_URL=sqlite:///./data/prism.db
+      - ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+      - ALLOW_MOCK_AUTH=true
+    networks:
+      - prism-net
+
+  ui:
+    build:
+      context: ${PRISM_UI_PATH:-../prism-ui}
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ${PRISM_UI_PATH:-../prism-ui}:/app        # hot-reload: sync source code
+      - /app/node_modules                          # exclude node_modules from mount
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - api
+    networks:
+      - prism-net
+
+volumes:
+  prism-db:
+
+networks:
+  prism-net:
+    driver: bridge

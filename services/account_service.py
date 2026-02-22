@@ -29,6 +29,15 @@ class AccountService:
             raise HTTPException(status_code=404, detail="Account not found")
         return account
 
+    def update_account(self, account_id: str, update_data: dict, owner_id: str) -> Account:
+        account = self.get_account(account_id, owner_id)
+        for key in ['name', 'type', 'currency']:
+            if key in update_data:
+                setattr(account, key, update_data[key])
+        self.db.commit()
+        self.db.refresh(account)
+        return account
+
     def delete_account(self, account_id: str, owner_id: str) -> None:
         account = self.get_account(account_id, owner_id)
         self.repo.remove(account_id)
