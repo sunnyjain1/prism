@@ -78,6 +78,8 @@ class AccountUpdate(BaseModel):
 
 class Account(AccountBase):
     id: str
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
     transactions: List[Transaction] = []
     class Config:
         from_attributes = True

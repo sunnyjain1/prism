@@ -4,6 +4,7 @@ from models import Account
 from schemas import AccountCreate
 from repositories.account_repository import AccountRepository
 from typing import List, Optional
+from datetime import datetime
 
 class AccountService:
     def __init__(self, db: Session):
@@ -18,6 +19,7 @@ class AccountService:
             
         data = account_in.dict()
         data["owner_id"] = owner_id
+        data["is_deleted"] = False
         return self.repo.create(data)
 
     def get_accounts(self, owner_id: str) -> List[Account]:
@@ -40,4 +42,19 @@ class AccountService:
 
     def delete_account(self, account_id: str, owner_id: str) -> None:
         account = self.get_account(account_id, owner_id)
-        self.repo.remove(account_id)
+        account.is_deleted = True
+        account.deleted_at = datetime.utcnow()
+        self.db.commit()
+
+    def get_deleted_accounts(self, owner_id: str) -> List[Account]:
+        return self.repo.get_deleted_by_owner(owner_id)
+
+    def restore_account(self, account_id: str, owner_id: str) -> Account:
+        account = self.get_account(account_id, owner_id)
+        if not account.is_deleted:
+            raise HTTPException(status_code=400, detail="Account is not deleted")
+        account.is_deleted = False
+        account.deleted_at = None
+        self.db.commit()
+        self.db.refresh(account)
+        return account

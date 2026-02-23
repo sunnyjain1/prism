@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -42,6 +42,10 @@ class Account(Base):
     credit_limit = Column(Float, nullable=True)
     
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+    # Soft delete
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
 
     __table_args__ = (
         UniqueConstraint('name', 'owner_id', name='uq_account_name_owner'),

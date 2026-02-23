@@ -9,8 +9,15 @@ class AccountRepository(BaseRepository[Account]):
 
     def get_by_owner(self, owner_id: str, skip: int = 0, limit: int = 100) -> List[Account]:
         return self.db.query(self.model).filter(
-            self.model.owner_id == owner_id
+            self.model.owner_id == owner_id,
+            self.model.is_deleted == False
         ).offset(skip).limit(limit).all()
+
+    def get_deleted_by_owner(self, owner_id: str) -> List[Account]:
+        return self.db.query(self.model).filter(
+            self.model.owner_id == owner_id,
+            self.model.is_deleted == True
+        ).all()
 
     def get_by_id_and_owner(self, id: str, owner_id: str) -> Optional[Account]:
         return self.db.query(self.model).filter(

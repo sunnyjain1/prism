@@ -25,6 +25,14 @@ def read_accounts(
     service = AccountService(db)
     return service.get_accounts(current_user.id)
 
+@router.get("/deleted", response_model=List[schemas.Account])
+def read_deleted_accounts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AccountService(db)
+    return service.get_deleted_accounts(current_user.id)
+
 @router.get("/{account_id}", response_model=schemas.Account)
 def read_account(
     account_id: str, 
@@ -43,6 +51,15 @@ def update_account(
 ):
     service = AccountService(db)
     return service.update_account(account_id, account.dict(exclude_unset=True), current_user.id)
+
+@router.post("/{account_id}/restore", response_model=schemas.Account)
+def restore_account(
+    account_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    service = AccountService(db)
+    return service.restore_account(account_id, current_user.id)
 
 @router.delete("/{account_id}")
 def delete_account(
