@@ -193,18 +193,28 @@ class TransactionService:
         
         # Calculate start date based on end date (default now)
         if end_month and end_year:
-            # Set end_date to the first of the month AFTER end_month, or the first of this month but end of it
+            # Set end_date to the first of the month AFTER end_month
             if end_month == 12:
                 end_date = datetime(end_year + 1, 1, 1)
             else:
                 end_date = datetime(end_year, end_month + 1, 1)
         else:
-            end_date = datetime.now()
+            now = datetime.now()
+            if now.month == 12:
+                end_date = datetime(now.year + 1, 1, 1)
+            else:
+                end_date = datetime(now.year, now.month + 1, 1)
 
-        # For simplicity, just grab last N*31 days to ensure coverage
-        start_date = end_date - timedelta(days=months * 31)
+        # Calculate precise start_date (N months ago, 1st of the month)
+        start_month = end_date.month - months
+        start_year = end_date.year
+        while start_month <= 0:
+            start_month += 12
+            start_year -= 1
+        start_date = datetime(start_year, start_month, 1)
         
-        txs = self.repo.get_by_owner(owner_id, start_date=start_date, limit=10000) # Ensure we get enough
+        # Ensure we filter out future transactions by passing end_date
+        txs = self.repo.get_by_owner(owner_id, start_date=start_date, end_date=end_date, limit=10000)
         
         history = {} # Key: "YYYY-MM", Value: {month: "YYYY-MM", income: 0, expense: 0}
         
