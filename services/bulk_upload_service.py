@@ -11,6 +11,7 @@ import traceback
 from services.transaction_service import TransactionService
 from services.deduplication_service import DeduplicationService
 from services.import_entity_service import ImportEntityService
+from services.category_inference_service import CategoryInferenceService
 
 # Import all bank importers
 from .importers.bank_importers import (
@@ -164,6 +165,8 @@ class BulkUploadService:
         
         # Create import entity service for handling missing categories/accounts
         entity_service = ImportEntityService(self.db, owner_id)
+        # Create category inference service for auto-categorization
+        category_inferrer = CategoryInferenceService()
         
         # Process transactions: create missing categories/accounts and assign IDs
         for tx in final_transactions:
@@ -180,6 +183,17 @@ class BulkUploadService:
                 )
                 if category_id:
                     tx.category_id = category_id
+            elif not tx.category_id:
+                # Auto-infer category from description when not explicitly provided
+                inferred_name = category_inferrer.infer_category(tx.description, tx.type)
+                if inferred_name:
+                    category_id = entity_service.get_or_create_category(
+                        inferred_name,
+                        tx.type,
+                        color=category_inferrer.get_category_color(inferred_name)
+                    )
+                    if category_id:
+                        tx.category_id = category_id
             
             # Handle account from import metadata if present
             # (This will be set by importers that extract account information)

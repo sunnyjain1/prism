@@ -28,5 +28,13 @@ class Settings:
     )
     ALLOW_MOCK_AUTH: bool = os.environ.get("ALLOW_MOCK_AUTH", "true").lower() == "true"
     MOCK_TOKEN: str = "dev-token-prism"
+    
+    # Gmail API (for auto-sync)
+    GOOGLE_CLIENT_SECRET: str = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    GMAIL_REDIRECT_URI: str = os.environ.get(
+        "GMAIL_REDIRECT_URI",
+        "http://localhost:8000/api/sync/gmail/callback"
+    )
+    GMAIL_SCOPES: list[str] = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 settings = Settings()

@@ -81,3 +81,49 @@ class Transaction(Base):
     destination_account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
     destination_account = relationship("Account", foreign_keys=[destination_account_id])
 
+
+class UserGmailToken(Base):
+    """Encrypted OAuth2 tokens for Gmail API access. One per user."""
+    __tablename__ = "user_gmail_tokens"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False)
+    encrypted_refresh_token = Column(String, nullable=False)
+    gmail_email = Column(String, nullable=True)
+    scopes = Column(String, nullable=True)
+    is_valid = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class SyncStatus(str, enum.Enum):
+    idle = "idle"
+    syncing = "syncing"
+    success = "success"
+    failed = "failed"
+
+
+class AccountSyncConfig(Base):
+    """Per-account configuration for Gmail auto-sync."""
+    __tablename__ = "account_sync_configs"
+
+    id = Column(String, primary_key=True, index=True)
+    account_id = Column(String, ForeignKey("accounts.id"), unique=True, nullable=False)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+    is_enabled = Column(Boolean, default=True, nullable=False)
+    gmail_search_query = Column(String, nullable=False)
+    importer_key = Column(String, nullable=False)
+    sync_interval_days = Column(Integer, default=30)
+    attachment_filename_pattern = Column(String, nullable=True)
+
+    # Sync state
+    last_synced_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String, default=SyncStatus.idle.value)
+    last_sync_error = Column(String, nullable=True)
+    last_sync_txn_count = Column(Integer, default=0)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    # Relationships
+    account = relationship("Account")

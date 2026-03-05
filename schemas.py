@@ -104,3 +104,38 @@ class UserOut(BaseModel):
     role: str
     class Config:
         from_attributes = True
+
+# --- Sync schemas ---
+
+class SyncConfigCreate(BaseModel):
+    gmail_search_query: str
+    importer_key: str
+    sync_interval_days: int = 30
+    attachment_filename_pattern: Optional[str] = None
+    is_enabled: bool = True
+
+class SyncConfigUpdate(BaseModel):
+    gmail_search_query: Optional[str] = None
+    importer_key: Optional[str] = None
+    sync_interval_days: Optional[int] = None
+    attachment_filename_pattern: Optional[str] = None
+    is_enabled: Optional[bool] = None
+
+class SyncConfigOut(BaseModel):
+    id: str
+    account_id: str
+    is_enabled: bool
+    gmail_search_query: str
+    importer_key: str
+    sync_interval_days: int
+    attachment_filename_pattern: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
+    last_sync_status: str = "idle"
+    last_sync_error: Optional[str] = None
+    last_sync_txn_count: int = 0
+    class Config:
+        from_attributes = True
+
+class GmailConnectionStatus(BaseModel):
+    is_connected: bool
+    gmail_email: Optional[str] = None

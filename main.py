@@ -1,15 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import models, user_models, database
-from api import transactions, accounts, categories, auth, bulk_upload
+from api import transactions, accounts, categories, auth, bulk_upload, sync
 from core.config import settings
 from core.exceptions import global_exception_handler
+from services.scheduler_service import scheduler_lifespan
 
 # Database initialization is now handled by Alembic migrations in start.sh
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    redirect_slashes=False
+    redirect_slashes=False,
+    lifespan=scheduler_lifespan
 )
 
 # Exception Handling
@@ -31,7 +33,9 @@ app.include_router(transactions.router)
 app.include_router(accounts.router)
 app.include_router(categories.router)
 app.include_router(bulk_upload.router)
+app.include_router(sync.router)
 
 @app.get("/")
 def read_root():
     return {"message": f"Welcome to {settings.PROJECT_NAME}"}
+
