@@ -48,8 +48,8 @@ class HdfcBankPDFImporter(BaseImporter):
                         pdf.close()
                         return True
             pdf.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"HDFC can_handle error: {e}")
         return False
     
     def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:

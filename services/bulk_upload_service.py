@@ -268,7 +268,7 @@ class BulkUploadService:
                     logger.info(f"Auto-detected importer: {importer_name}")
                     return importer
             except Exception as e:
-                logger.debug(f"Error checking importer {importer_name}: {e}")
+                logger.warning(f"Error checking importer {importer_name}: {e}")
                 continue
         
         return None

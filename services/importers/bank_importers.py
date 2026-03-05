@@ -477,7 +477,12 @@ class GenericBankImporter(BaseImporter):
         super().__init__("Generic Bank", ["csv", "xlsx", "xls"])
     
     def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
-        # Generic importer can handle any CSV/Excel file
+        # Generic importer can handle any CSV/Excel file, but not PDFs
+        if filename and filename.lower().endswith('.pdf'):
+            return False
+        # Also reject if content starts with PDF magic bytes
+        if file_content[:5] == b'%PDF-':
+            return False
         return True
     
     def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
