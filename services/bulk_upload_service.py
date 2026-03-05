@@ -29,6 +29,9 @@ from .importers.credit_card_pdf_importers import (
     GenericCreditCardPDFImporter
 )
 
+# Import bank PDF importers
+from .importers.bank_pdf_importers import HdfcBankPDFImporter
+
 # Import Money Manager importer
 from .importers.money_manager_importer import MoneyManagerImporter
 
@@ -52,6 +55,9 @@ class BulkUploadService:
             "chase": ChaseBankImporter(),
             "bank_of_america": BankOfAmericaImporter(),
             "wells_fargo": WellsFargoImporter(),
+            
+            # Bank PDF importers
+            "hdfc_bank": HdfcBankPDFImporter(),
             
             # Credit card PDF importers
             "chase_credit": ChaseCreditCardPDFImporter(),
@@ -292,7 +298,8 @@ class BulkUploadService:
             "citi": "Citi credit card PDF statements",
             "capital_one": "Capital One credit card PDF statements",
             "generic_credit_card": "Generic credit card PDF statements",
-            "money_manager": "Money Manager XLS/TSV export files"
+            "money_manager": "Money Manager XLS/TSV export files",
+            "hdfc_bank": "HDFC Bank savings/current account PDF statements"
         }
         
         return descriptions.get(importer_name, "Unknown format")
