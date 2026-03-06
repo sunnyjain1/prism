@@ -32,13 +32,13 @@ class HdfcBankPDFImporter(BaseImporter):
         ]
         self.txn_header = ['Txn Date', 'Narration', 'Withdrawals', 'Deposits', 'Closing Balance']
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         """Detect HDFC Bank savings/current account PDF."""
         if filename and not filename.lower().endswith('.pdf'):
             return False
         
         try:
-            pdf = pdfplumber.open(io.BytesIO(file_content))
+            pdf = pdfplumber.open(io.BytesIO(file_content), password=password)
             # Check first 2 pages for HDFC identifiers
             for page in pdf.pages[:2]:
                 text = (page.extract_text() or "").lower()
@@ -52,14 +52,14 @@ class HdfcBankPDFImporter(BaseImporter):
             logger.error(f"HDFC can_handle error: {e}")
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         """Parse HDFC Bank PDF statement and extract transactions."""
         result = ImportResult()
         
         try:
-            pdf = pdfplumber.open(io.BytesIO(file_content))
+            pdf = pdfplumber.open(io.BytesIO(file_content), password=password)
         except Exception as e:
-            result.add_error(0, f"Failed to open PDF: {e}")
+            result.add_error(0, f"Failed to open PDF (incorrect password?): {e}")
             return result
         
         # Extract metadata from first page

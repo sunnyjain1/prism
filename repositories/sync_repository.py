@@ -93,8 +93,11 @@ class SyncRepository:
         gmail_search_query: str, importer_key: str,
         sync_interval_days: int = 30,
         attachment_filename_pattern: str = None,
-        is_enabled: bool = True
+        is_enabled: bool = True,
+        pdf_password: str = None
     ) -> AccountSyncConfig:
+        encrypted_pw = encrypt_token(pdf_password) if pdf_password else None
+        
         config = AccountSyncConfig(
             id=str(uuid.uuid4()),
             account_id=account_id,
@@ -103,6 +106,7 @@ class SyncRepository:
             importer_key=importer_key,
             sync_interval_days=sync_interval_days,
             attachment_filename_pattern=attachment_filename_pattern,
+            encrypted_pdf_password=encrypted_pw,
             is_enabled=is_enabled,
             last_sync_status=SyncStatus.idle.value,
             created_at=datetime.datetime.utcnow(),
@@ -114,6 +118,11 @@ class SyncRepository:
         return config
 
     def update_sync_config(self, config: AccountSyncConfig, **kwargs) -> AccountSyncConfig:
+        if "pdf_password" in kwargs:
+            raw_pw = kwargs.pop("pdf_password")
+            if raw_pw is not None:
+                config.encrypted_pdf_password = encrypt_token(raw_pw)
+
         for key, value in kwargs.items():
             if value is not None and hasattr(config, key):
                 setattr(config, key, value)
@@ -121,6 +130,11 @@ class SyncRepository:
         self.db.commit()
         self.db.refresh(config)
         return config
+
+    def get_decrypted_pdf_password(self, config: AccountSyncConfig) -> Optional[str]:
+        if not config or not config.encrypted_pdf_password:
+            return None
+        return decrypt_token(config.encrypted_pdf_password)
 
     def delete_sync_config(self, account_id: str, owner_id: str) -> bool:
         config = self.get_sync_config(account_id, owner_id)

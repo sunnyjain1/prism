@@ -186,19 +186,25 @@ def create_or_update_sync_config(
             importer_key=config_in.importer_key,
             sync_interval_days=config_in.sync_interval_days,
             attachment_filename_pattern=config_in.attachment_filename_pattern,
-            is_enabled=config_in.is_enabled
+            is_enabled=config_in.is_enabled,
+            pdf_password=config_in.pdf_password
         )
+        # Map has_pdf_password
+        updated.has_pdf_password = bool(updated.encrypted_pdf_password)
         return updated
 
-    return sync_repo.create_sync_config(
+    created = sync_repo.create_sync_config(
         account_id=account_id,
         owner_id=current_user.id,
         gmail_search_query=config_in.gmail_search_query,
         importer_key=config_in.importer_key,
         sync_interval_days=config_in.sync_interval_days,
         attachment_filename_pattern=config_in.attachment_filename_pattern,
-        is_enabled=config_in.is_enabled
+        is_enabled=config_in.is_enabled,
+        pdf_password=config_in.pdf_password
     )
+    created.has_pdf_password = bool(created.encrypted_pdf_password)
+    return created
 
 
 @router.get("/accounts/{account_id}/config", response_model=schemas.SyncConfigOut)
@@ -212,6 +218,7 @@ def get_sync_config(
     config = sync_repo.get_sync_config(account_id, current_user.id)
     if not config:
         raise HTTPException(status_code=404, detail="Sync config not found for this account")
+    config.has_pdf_password = bool(config.encrypted_pdf_password)
     return config
 
 
@@ -236,7 +243,9 @@ def update_sync_config(
         if update_data["importer_key"] not in bulk_service.importers:
             raise HTTPException(status_code=400, detail=f"Invalid importer_key")
 
-    return sync_repo.update_sync_config(config, **update_data)
+    updated = sync_repo.update_sync_config(config, **update_data)
+    updated.has_pdf_password = bool(updated.encrypted_pdf_password)
+    return updated
 
 
 @router.delete("/accounts/{account_id}/config")
@@ -285,7 +294,11 @@ def get_all_sync_status(
     """Get sync status for all configured accounts."""
     sync_repo = SyncRepository(db)
     configs = sync_repo.get_all_sync_configs_for_user(current_user.id)
-    return [schemas.SyncConfigOut.model_validate(c) for c in configs]
+    out = []
+    for c in configs:
+        c.has_pdf_password = bool(c.encrypted_pdf_password)
+        out.append(schemas.SyncConfigOut.model_validate(c))
+    return out
 
 
 @router.get("/importers")

@@ -103,32 +103,32 @@ class UserOut(BaseModel):
 
 # --- Sync schemas ---
 
-class SyncConfigCreate(BaseModel):
+class SyncConfigBase(BaseModel):
     gmail_search_query: str
     importer_key: str
-    sync_interval_days: int = 30
+    sync_interval_days: int = Field(default=30, ge=1)
     attachment_filename_pattern: Optional[str] = None
     is_enabled: bool = True
+
+class SyncConfigCreate(SyncConfigBase):
+    pdf_password: Optional[str] = None
 
 class SyncConfigUpdate(BaseModel):
     gmail_search_query: Optional[str] = None
     importer_key: Optional[str] = None
-    sync_interval_days: Optional[int] = None
+    sync_interval_days: Optional[int] = Field(default=None, ge=1)
     attachment_filename_pattern: Optional[str] = None
     is_enabled: Optional[bool] = None
+    pdf_password: Optional[str] = None
 
-class SyncConfigOut(BaseModel):
+class SyncConfigOut(SyncConfigBase):
     id: str
     account_id: str
-    is_enabled: bool
-    gmail_search_query: str
-    importer_key: str
-    sync_interval_days: int
-    attachment_filename_pattern: Optional[str] = None
     last_synced_at: Optional[datetime] = None
     last_sync_status: str = "idle"
     last_sync_error: Optional[str] = None
     last_sync_txn_count: int = 0
+    has_pdf_password: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 class GmailConnectionStatus(BaseModel):

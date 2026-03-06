@@ -53,7 +53,7 @@ class BaseImporter(ABC):
             self.type_resolver = TransactionTypeResolverChain()
     
     @abstractmethod
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         """
         Parse file content and return ImportResult with transactions and errors.
         
@@ -67,7 +67,7 @@ class BaseImporter(ABC):
         pass
     
     @abstractmethod
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         """
         Check if this importer can handle the given file.
         

@@ -26,7 +26,7 @@ class ChaseBankImporter(BaseImporter):
         self.type_columns = ["Type", "Transaction Type"]
         self.category_columns = ["Category", "Category Type"]
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         """Check if file is from Chase Bank."""
         if filename:
             filename_lower = filename.lower()
@@ -46,7 +46,7 @@ class ChaseBankImporter(BaseImporter):
         
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Chase"
         
@@ -218,7 +218,7 @@ class BankOfAmericaImporter(BaseImporter):
         self.amount_columns = ["Amount", "Transaction Amount"]
         self.balance_columns = ["Balance", "Running Balance"]
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         if filename and 'bofa' in filename.lower() or 'bank of america' in filename.lower():
             return True
         
@@ -233,7 +233,7 @@ class BankOfAmericaImporter(BaseImporter):
         
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Bank of America"
         
@@ -340,7 +340,7 @@ class WellsFargoImporter(BaseImporter):
         self.description_columns = ["Description", "Transaction Description"]
         self.amount_columns = ["Amount", "Debit", "Credit"]
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         if filename and ('wells' in filename.lower() or 'wf' in filename.lower()):
             return True
         
@@ -355,7 +355,7 @@ class WellsFargoImporter(BaseImporter):
         
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Wells Fargo"
         
@@ -476,7 +476,7 @@ class GenericBankImporter(BaseImporter):
     def __init__(self):
         super().__init__("Generic Bank", ["csv", "xlsx", "xls"])
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         # Generic importer can handle any CSV/Excel file, but not PDFs
         if filename and filename.lower().endswith('.pdf'):
             return False
@@ -485,7 +485,7 @@ class GenericBankImporter(BaseImporter):
             return False
         return True
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Generic"
         

@@ -21,7 +21,7 @@ class ChaseCreditCardPDFImporter(BaseImporter):
     def __init__(self):
         super().__init__("Chase Credit Card", ["pdf"])
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         """Detect Chase credit card PDF."""
         if filename:
             filename_lower = filename.lower()
@@ -30,7 +30,7 @@ class ChaseCreditCardPDFImporter(BaseImporter):
         
         # Try to detect from PDF content
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 first_page_text = pdf.pages[0].extract_text() or ""
                 if 'chase' in first_page_text.lower() and 'credit card' in first_page_text.lower():
                     return True
@@ -39,13 +39,13 @@ class ChaseCreditCardPDFImporter(BaseImporter):
         
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Chase Credit Card"
         result.metadata["file_type"] = "PDF"
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 transactions = []
                 
                 for page_num, page in enumerate(pdf.pages):
@@ -196,14 +196,14 @@ class AmexCreditCardPDFImporter(BaseImporter):
     def __init__(self):
         super().__init__("American Express", ["pdf"])
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         if filename:
             filename_lower = filename.lower()
             if ('amex' in filename_lower or 'american express' in filename_lower) and 'pdf' in filename_lower:
                 return True
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 first_page_text = pdf.pages[0].extract_text() or ""
                 if 'american express' in first_page_text.lower() or 'amex' in first_page_text.lower():
                     return True
@@ -212,13 +212,13 @@ class AmexCreditCardPDFImporter(BaseImporter):
         
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "American Express"
         result.metadata["file_type"] = "PDF"
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 transactions = []
                 
                 for page in pdf.pages:
@@ -301,14 +301,14 @@ class CitiCreditCardPDFImporter(BaseImporter):
     def __init__(self):
         super().__init__("Citi Credit Card", ["pdf"])
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         if filename:
             filename_lower = filename.lower()
             if 'citi' in filename_lower and 'pdf' in filename_lower:
                 return True
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 first_page_text = pdf.pages[0].extract_text() or ""
                 if 'citibank' in first_page_text.lower() or 'citi' in first_page_text.lower():
                     return True
@@ -317,13 +317,13 @@ class CitiCreditCardPDFImporter(BaseImporter):
         
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Citi"
         result.metadata["file_type"] = "PDF"
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 transactions = []
                 
                 for page in pdf.pages:
@@ -400,14 +400,14 @@ class CapitalOneCreditCardPDFImporter(BaseImporter):
     def __init__(self):
         super().__init__("Capital One", ["pdf"])
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         if filename:
             filename_lower = filename.lower()
             if ('capital one' in filename_lower or 'capitalone' in filename_lower) and 'pdf' in filename_lower:
                 return True
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 first_page_text = pdf.pages[0].extract_text() or ""
                 if 'capital one' in first_page_text.lower():
                     return True
@@ -416,13 +416,13 @@ class CapitalOneCreditCardPDFImporter(BaseImporter):
         
         return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Capital One"
         result.metadata["file_type"] = "PDF"
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 transactions = []
                 
                 for page in pdf.pages:
@@ -499,17 +499,17 @@ class GenericCreditCardPDFImporter(BaseImporter):
     def __init__(self):
         super().__init__("Generic Credit Card", ["pdf"])
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         # Can handle any PDF file
         return filename and filename.lower().endswith('.pdf')
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         result = ImportResult()
         result.metadata["bank"] = "Generic Credit Card"
         result.metadata["file_type"] = "PDF"
         
         try:
-            with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+            with pdfplumber.open(io.BytesIO(file_content), password=password) as pdf:
                 transactions = []
                 
                 for page in pdf.pages:

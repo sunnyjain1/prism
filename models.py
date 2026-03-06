@@ -115,6 +115,7 @@ class AccountSyncConfig(Base):
     importer_key = Column(String, nullable=False)
     sync_interval_days = Column(Integer, default=30)
     attachment_filename_pattern = Column(String, nullable=True)
+    encrypted_pdf_password = Column(String, nullable=True)
 
     # Sync state
     last_synced_at = Column(DateTime, nullable=True)

@@ -79,7 +79,8 @@ class SyncOrchestrator:
             if not importer:
                 raise Exception(f"Unknown importer: {config.importer_key}")
 
-            import_result = importer.parse(file_content, filename)
+            pdf_password = self.sync_repo.get_decrypted_pdf_password(config)
+            import_result = importer.parse(file_content, filename, password=pdf_password)
 
             if not import_result.transactions:
                 self.sync_repo.set_sync_status(

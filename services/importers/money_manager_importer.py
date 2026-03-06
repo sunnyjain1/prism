@@ -29,7 +29,7 @@ class MoneyManagerImporter(BaseImporter):
         super().__init__("Money Manager", ["xls", "xlsx", "tsv", "txt"])
         self.type_resolver = TransactionTypeResolverChain()
     
-    def can_handle(self, file_content: bytes, filename: Optional[str] = None) -> bool:
+    def can_handle(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> bool:
         """Check if file is from Money Manager."""
         if filename:
             filename_lower = filename.lower()
@@ -58,7 +58,7 @@ class MoneyManagerImporter(BaseImporter):
         except Exception:
             return False
     
-    def parse(self, file_content: bytes, filename: Optional[str] = None) -> ImportResult:
+    def parse(self, file_content: bytes, filename: Optional[str] = None, password: Optional[str] = None) -> ImportResult:
         """Parse Money Manager file and return ImportResult."""
         result = ImportResult()
         result.metadata["source"] = "Money Manager"
