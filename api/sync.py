@@ -83,6 +83,11 @@ def gmail_oauth_callback(
     )
     flow.redirect_uri = settings.GMAIL_REDIRECT_URI
 
+    # Google often returns more scopes than requested (e.g. profile, email)
+    # This prevents oauthlib from raising a Warning/Exception for the scope mismatch
+    import os
+    os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+
     try:
         flow.fetch_token(code=payload.code)
     except Exception as e:
