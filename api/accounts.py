@@ -50,7 +50,7 @@ def update_account(
     current_user: User = Depends(get_current_user)
 ):
     service = AccountService(db)
-    return service.update_account(account_id, account.dict(exclude_unset=True), current_user.id)
+    return service.update_account(account_id, account.model_dump(exclude_unset=True), current_user.id)
 
 @router.post("/{account_id}/restore", response_model=schemas.Account)
 def restore_account(

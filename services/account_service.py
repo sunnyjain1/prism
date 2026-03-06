@@ -17,7 +17,7 @@ class AccountService:
         if existing:
             raise HTTPException(status_code=400, detail=f"Account with name '{account_in.name}' already exists.")
             
-        data = account_in.dict()
+        data = account_in.model_dump()
         data["owner_id"] = owner_id
         data["is_deleted"] = False
         return self.repo.create(data)
@@ -27,7 +27,7 @@ class AccountService:
 
     def get_account(self, account_id: str, owner_id: str) -> Account:
         account = self.repo.get_by_id_and_owner(account_id, owner_id)
-        if not account:
+        if not account or account.is_deleted:
             raise HTTPException(status_code=404, detail="Account not found")
         return account
 
@@ -50,8 +50,8 @@ class AccountService:
         return self.repo.get_deleted_by_owner(owner_id)
 
     def restore_account(self, account_id: str, owner_id: str) -> Account:
-        account = self.get_account(account_id, owner_id)
-        if not account.is_deleted:
+        account = self.repo.get_by_id_and_owner(account_id, owner_id)
+        if not account or not account.is_deleted:
             raise HTTPException(status_code=400, detail="Account is not deleted")
         account.is_deleted = False
         account.deleted_at = None

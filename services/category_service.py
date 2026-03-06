@@ -35,7 +35,7 @@ class CategoryService:
         self.repo = CategoryRepository(db)
 
     def create_category(self, category_in: CategoryCreate, owner_id: str) -> Category:
-        data = category_in.dict()
+        data = category_in.model_dump()
         data["owner_id"] = owner_id
         return self.repo.create(data)
 

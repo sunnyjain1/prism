@@ -17,7 +17,7 @@ class TransactionService:
             raise HTTPException(status_code=400, detail="Destination account required for transfer")
 
         # Create the transaction record
-        tx_data = transaction_in.dict()
+        tx_data = transaction_in.model_dump()
         tx_data["owner_id"] = owner_id
         
         # Validation checks
@@ -134,7 +134,7 @@ class TransactionService:
         if not existing:
             raise HTTPException(status_code=404, detail="Transaction not found")
             
-        update_data = tx_update.dict(exclude_unset=True)
+        update_data = tx_update.model_dump(exclude_unset=True)
         
         # Handle Balance Updates if amount or type changed?
         # This is complex. For Phase 1/2, a simple update is allowed.

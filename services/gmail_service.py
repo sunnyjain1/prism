@@ -83,12 +83,27 @@ class GmailService:
         """
         message = self.get_message(message_id)
         attachments = []
+        payload = message.get("payload", {})
 
-        parts = message.get("payload", {}).get("parts", [])
-        for part in parts:
+        # Helper to recursively find parts with attachments
+        def _extract_attachment_parts(parts: List[Dict]) -> List[Dict]:
+            found = []
+            for p in parts:
+                if p.get("filename") and p.get("body", {}).get("attachmentId"):
+                    found.append(p)
+                if "parts" in p:
+                    found.extend(_extract_attachment_parts(p["parts"]))
+            return found
+
+        # Gather all attachment parts (could be at root payload, or nested in parts)
+        all_attachment_parts = []
+        if payload.get("filename") and payload.get("body", {}).get("attachmentId"):
+            all_attachment_parts.append(payload)
+        if "parts" in payload:
+            all_attachment_parts.extend(_extract_attachment_parts(payload["parts"]))
+
+        for part in all_attachment_parts:
             filename = part.get("filename", "")
-            if not filename:
-                continue
 
             # Filter by pattern if provided
             if filename_pattern:
@@ -96,9 +111,7 @@ class GmailService:
                     continue
 
             attachment_id = part.get("body", {}).get("attachmentId")
-            if not attachment_id:
-                continue
-
+            
             try:
                 attachment = self.service.users().messages().attachments().get(
                     userId="me", messageId=message_id, id=attachment_id
@@ -117,21 +130,23 @@ class GmailService:
         filename_pattern: Optional[str] = None
     ) -> Optional[Tuple[str, bytes]]:
         """
-        Convenience method: search for messages and return the latest attachment.
+        Convenience method: search for messages and return the latest attachment matching the pattern.
 
         Returns:
             (filename, content_bytes) or None
         """
-        messages = self.search_messages(query, after_date=after_date, max_results=1)
+        # Fetch up to 10 messages in case the most recent ones don't have the attachment
+        messages = self.search_messages(query, after_date=after_date, max_results=10)
         if not messages:
             return None
 
-        # Get the most recent message
-        message_id = messages[0]["id"]
-        attachments = self.get_attachments(message_id, filename_pattern)
-
-        if not attachments:
-            logger.warning(f"Message {message_id} has no matching attachments")
-            return None
-
-        return attachments[0]
+        # Iterate through messages starting from the most recent
+        for msg in messages:
+            message_id = msg["id"]
+            attachments = self.get_attachments(message_id, filename_pattern)
+            
+            if attachments:
+                return attachments[0]
+                
+        logger.warning(f"No matching attachments found in the last {len(messages)} messages")
+        return None

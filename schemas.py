@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -25,8 +25,7 @@ class CategoryCreate(CategoryBase):
 
 class Category(CategoryBase):
     id: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TransactionBase(BaseModel):
     amount: float
@@ -57,8 +56,7 @@ class TransactionUpdate(BaseModel):
 class Transaction(TransactionBase):
     id: str
     category: Optional[Category] = None
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AccountBase(BaseModel):
     name: str
@@ -81,8 +79,7 @@ class Account(AccountBase):
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
     transactions: List[Transaction] = []
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GoogleToken(BaseModel):
@@ -102,8 +99,7 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     role: str
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # --- Sync schemas ---
 
@@ -133,8 +129,7 @@ class SyncConfigOut(BaseModel):
     last_sync_status: str = "idle"
     last_sync_error: Optional[str] = None
     last_sync_txn_count: int = 0
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class GmailConnectionStatus(BaseModel):
     is_connected: bool
