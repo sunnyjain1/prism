@@ -57,15 +57,15 @@ def get_gmail_auth_url(current_user: User = Depends(get_current_user)):
     return {"auth_url": auth_url, "state": state}
 
 
-@router.get("/gmail/callback")
+@router.post("/gmail/callback")
 def gmail_oauth_callback(
-    code: str,
-    state: str,  # User ID passed as state
-    db: Session = Depends(get_db)
+    payload: schemas.GmailOAuthCallback,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    OAuth callback from Google. Exchanges code for tokens and stores refresh token.
-    Redirects back to the frontend after completion.
+    Exchange the OAuth authorization code for tokens.
+    Called by the frontend after Google redirects back with the code.
     """
     from google_auth_oauthlib.flow import Flow
 
@@ -84,7 +84,7 @@ def gmail_oauth_callback(
     flow.redirect_uri = settings.GMAIL_REDIRECT_URI
 
     try:
-        flow.fetch_token(code=code)
+        flow.fetch_token(code=payload.code)
     except Exception as e:
         logger.error(f"Gmail OAuth token exchange failed: {e}")
         raise HTTPException(status_code=400, detail=f"Token exchange failed: {e}")
@@ -110,20 +110,16 @@ def gmail_oauth_callback(
         pass  # Email is optional metadata
 
     # Store encrypted refresh token
-    user_id = state  # The user ID was passed as the OAuth state parameter
     sync_repo = SyncRepository(db)
     sync_repo.save_gmail_token(
-        user_id=user_id,
+        user_id=current_user.id,
         refresh_token=credentials.refresh_token,
         gmail_email=gmail_email,
         scopes=",".join(settings.GMAIL_SCOPES)
     )
 
-    logger.info(f"Gmail connected for user {user_id} ({gmail_email})")
-
-    # Redirect back to frontend
-    frontend_url = settings.ALLOWED_ORIGINS[0] if settings.ALLOWED_ORIGINS else "http://localhost:5173"
-    return RedirectResponse(url=f"{frontend_url}/accounts?gmail=connected")
+    logger.info(f"Gmail connected for user {current_user.id} ({gmail_email})")
+    return {"message": "Gmail connected", "email": gmail_email}
 
 
 @router.get("/gmail/status", response_model=schemas.GmailConnectionStatus)

@@ -33,7 +33,7 @@ class Settings:
     GOOGLE_CLIENT_SECRET: str = os.environ.get("GOOGLE_CLIENT_SECRET", "")
     GMAIL_REDIRECT_URI: str = os.environ.get(
         "GMAIL_REDIRECT_URI",
-        "http://localhost:8000/api/sync/gmail/callback"
+        "http://localhost:5173/accounts"
     )
     GMAIL_SCOPES: list[str] = ["https://www.googleapis.com/auth/gmail.readonly"]
 

@@ -139,3 +139,6 @@ class SyncConfigOut(BaseModel):
 class GmailConnectionStatus(BaseModel):
     is_connected: bool
     gmail_email: Optional[str] = None
+
+class GmailOAuthCallback(BaseModel):
+    code: str
