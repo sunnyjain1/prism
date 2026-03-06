@@ -127,7 +127,8 @@ class GmailService:
 
     def get_latest_attachment(
         self, query: str, after_date: Optional[datetime] = None,
-        filename_pattern: Optional[str] = None
+        filename_pattern: Optional[str] = None,
+        subject_pattern: Optional[str] = None
     ) -> Optional[Tuple[str, bytes]]:
         """
         Convenience method: search for messages and return the latest attachment matching the pattern.
@@ -143,6 +144,20 @@ class GmailService:
         # Iterate through messages starting from the most recent
         for msg in messages:
             message_id = msg["id"]
+            
+            # Check subject pattern if provided
+            if subject_pattern:
+                try:
+                    full_msg = self.get_message(message_id)
+                    headers = full_msg.get("payload", {}).get("headers", [])
+                    subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "")
+                    if not re.search(subject_pattern, subject, re.IGNORECASE):
+                        logger.info(f"Skipping message {message_id}: Subject '{subject}' does not match pattern '{subject_pattern}'")
+                        continue
+                except Exception as e:
+                    logger.error(f"Failed to check subject for message {message_id}: {e}")
+                    continue
+
             attachments = self.get_attachments(message_id, filename_pattern)
             
             if attachments:

@@ -108,6 +108,7 @@ class SyncConfigBase(BaseModel):
     importer_key: str
     sync_interval_days: int = Field(default=30, ge=1)
     attachment_filename_pattern: Optional[str] = None
+    subject_match_pattern: Optional[str] = None
     is_enabled: bool = True
 
 class SyncConfigCreate(SyncConfigBase):
@@ -118,6 +119,7 @@ class SyncConfigUpdate(BaseModel):
     importer_key: Optional[str] = None
     sync_interval_days: Optional[int] = Field(default=None, ge=1)
     attachment_filename_pattern: Optional[str] = None
+    subject_match_pattern: Optional[str] = None
     is_enabled: Optional[bool] = None
     pdf_password: Optional[str] = None
 

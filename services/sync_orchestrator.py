@@ -61,7 +61,8 @@ class SyncOrchestrator:
             attachment = gmail.get_latest_attachment(
                 query=config.gmail_search_query,
                 after_date=config.last_synced_at,
-                filename_pattern=config.attachment_filename_pattern
+                filename_pattern=config.attachment_filename_pattern,
+                subject_pattern=config.subject_match_pattern
             )
 
             if not attachment:
