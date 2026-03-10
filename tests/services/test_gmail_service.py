@@ -97,28 +97,3 @@ def test_get_latest_attachment_regex(mock_credentials, mock_build):
     att_no_regex = gmail.get_latest_attachment(query="from:bank")
     assert att_no_regex is not None
     assert att_no_regex[0] == "statement_mar.pdf"
-    
-    # 4. Test WITH regex that matches nothing - should return None
-    att_no_match = gmail.get_latest_attachment(
-        query="from:bank", 
-        subject_pattern="^Will Not Match Anything.*"
-    )
-    assert att_no_match is None
-    
-    # 5. Test WITH regex that matches the second message explicitly
-    # Even though msg3 is newer, the regex will force it to skip to msg2, except msg2 is an alert.
-    # Let's test a regex that looks specifically for "Security Alert"
-    att_alert = gmail.get_latest_attachment(
-        query="from:bank", 
-        subject_pattern="^Security Alert"
-    )
-    assert att_alert is not None
-    assert att_alert[0] == "alert.pdf"
-    
-    # 6. Test WITH regex matching "Feb 2026" - should skip msg3 and msg2, landing on msg1
-    att_feb = gmail.get_latest_attachment(
-        query="from:bank", 
-        subject_pattern=".*Feb 2026.*"
-    )
-    assert att_feb is not None
-    assert att_feb[0] == "statement_feb.pdf"

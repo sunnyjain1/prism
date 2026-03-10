@@ -47,6 +47,34 @@ def test_get_account_not_found(account_service, setup_user):
         account_service.get_account("non-existent", user.id)
     assert exc.value.status_code == 404
 
+def test_calculate_monthly_stats(account_service, setup_user, db_session):
+    from models import Transaction
+    from datetime import datetime, timedelta, timezone
+    
+    user = setup_user
+    acc = account_service.create_account(AccountCreate(id="acc_stats", name="Stats Acc", type="checking"), user.id)
+    
+    # Add transactions
+    now = datetime.now(timezone.utc)
+    this_month = datetime(now.year, now.month, 1) + timedelta(hours=1)
+    last_month = this_month - timedelta(days=5)
+    
+    # 1. Income this month
+    tx1 = Transaction(id="tx1", amount=1000.0, type="income", date=this_month, owner_id=user.id, account_id=acc.id, timestamp=0)
+    # 2. Expense this month
+    tx2 = Transaction(id="tx2", amount=400.0, type="expense", date=this_month, owner_id=user.id, account_id=acc.id, timestamp=0)
+    # 3. Income last month (should be ignored)
+    tx3 = Transaction(id="tx3", amount=5000.0, type="income", date=last_month, owner_id=user.id, account_id=acc.id, timestamp=0)
+    
+    db_session.add_all([tx1, tx2, tx3])
+    db_session.commit()
+    
+    # Reload account
+    acc_loaded = account_service.get_account(acc.id, user.id)
+    
+    assert acc_loaded.monthly_income == 1000.0
+    assert acc_loaded.monthly_expense == 400.0
+
 def test_delete_account(account_service, setup_user, db_session):
     user = setup_user
     acc = account_service.create_account(AccountCreate(id="acc1", name="Delete Me", type="checking"), user.id)

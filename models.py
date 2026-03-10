@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enu
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
+from datetime import timezone
 import enum
 
 class AccountType(str, enum.Enum):
@@ -61,7 +62,7 @@ class Transaction(Base):
     type = Column(String, nullable=False) # income, expense, transfer
     description = Column(String)
     merchant = Column(String, nullable=True)
-    date = Column(DateTime, default=datetime.datetime.utcnow)
+    date = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
     timestamp = Column(BigInteger) # For sync logic if needed
     notes = Column(String, nullable=True)
     
@@ -92,7 +93,7 @@ class UserGmailToken(Base):
     gmail_email = Column(String, nullable=True)
     scopes = Column(String, nullable=True)
     is_valid = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
 
 
 class SyncStatus(str, enum.Enum):
@@ -116,7 +117,6 @@ class AccountSyncConfig(Base):
     sync_interval_days = Column(Integer, default=30)
     attachment_filename_pattern = Column(String, nullable=True)
     encrypted_pdf_password = Column(String, nullable=True)
-    subject_match_pattern = Column(String, nullable=True)
 
     # Sync state
     last_synced_at = Column(DateTime, nullable=True)
@@ -124,8 +124,25 @@ class AccountSyncConfig(Base):
     last_sync_error = Column(String, nullable=True)
     last_sync_txn_count = Column(Integer, default=0)
 
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc), onupdate=lambda: datetime.datetime.now(timezone.utc))
 
     # Relationships
     account = relationship("Account")
+
+
+class CategorizationRule(Base):
+    """User-defined rules for auto-categorizing transactions."""
+    __tablename__ = "categorization_rules"
+
+    id = Column(String, primary_key=True, index=True)
+    pattern = Column(String, nullable=False)
+    category_id = Column(String, ForeignKey("categories.id"), nullable=False)
+    priority = Column(Integer, default=0)
+    owner_id = Column(String, ForeignKey("users.id"), nullable=False)
+    is_regex = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc), onupdate=lambda: datetime.datetime.now(timezone.utc))
+
+    # Relationships
+    category = relationship("Category")

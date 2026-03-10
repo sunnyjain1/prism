@@ -186,7 +186,6 @@ def create_or_update_sync_config(
             importer_key=config_in.importer_key,
             sync_interval_days=config_in.sync_interval_days,
             attachment_filename_pattern=config_in.attachment_filename_pattern,
-            subject_match_pattern=config_in.subject_match_pattern,
             is_enabled=config_in.is_enabled,
             pdf_password=config_in.pdf_password
         )
@@ -201,7 +200,6 @@ def create_or_update_sync_config(
         importer_key=config_in.importer_key,
         sync_interval_days=config_in.sync_interval_days,
         attachment_filename_pattern=config_in.attachment_filename_pattern,
-        subject_match_pattern=config_in.subject_match_pattern,
         is_enabled=config_in.is_enabled,
         pdf_password=config_in.pdf_password
     )

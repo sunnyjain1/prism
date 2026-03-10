@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import models, user_models, database
-from api import transactions, accounts, categories, auth, bulk_upload, sync
+from api import transactions, accounts, categories, auth, bulk_upload, sync, categorization_rules
 from core.config import settings
 from core.exceptions import global_exception_handler
 from services.scheduler_service import scheduler_lifespan
@@ -34,6 +34,7 @@ app.include_router(accounts.router)
 app.include_router(categories.router)
 app.include_router(bulk_upload.router)
 app.include_router(sync.router)
+app.include_router(categorization_rules.router)
 
 @app.get("/")
 def read_root():

@@ -64,7 +64,7 @@ class AccountBase(BaseModel):
     currency: str = "INR"
     balance: float = 0.0
     billing_cycle_day: int = 1
-    credit_limit: Optional[float] = None
+    credit_limit: Optional[float] = Field(default=None, description="Total credit limit for the card")
 
 class AccountCreate(AccountBase):
     id: str
@@ -73,11 +73,15 @@ class AccountUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[AccountType] = None
     currency: Optional[str] = None
+    billing_cycle_day: Optional[int] = Field(default=None, ge=1, le=31)
+    credit_limit: Optional[float] = None
 
 class Account(AccountBase):
     id: str
     is_deleted: bool = False
     deleted_at: Optional[datetime] = None
+    monthly_income: float = 0.0
+    monthly_expense: float = 0.0
     transactions: List[Transaction] = []
     model_config = ConfigDict(from_attributes=True)
 
@@ -108,7 +112,6 @@ class SyncConfigBase(BaseModel):
     importer_key: str
     sync_interval_days: int = Field(default=30, ge=1)
     attachment_filename_pattern: Optional[str] = None
-    subject_match_pattern: Optional[str] = None
     is_enabled: bool = True
 
 class SyncConfigCreate(SyncConfigBase):
@@ -119,7 +122,6 @@ class SyncConfigUpdate(BaseModel):
     importer_key: Optional[str] = None
     sync_interval_days: Optional[int] = Field(default=None, ge=1)
     attachment_filename_pattern: Optional[str] = None
-    subject_match_pattern: Optional[str] = None
     is_enabled: Optional[bool] = None
     pdf_password: Optional[str] = None
 
@@ -139,3 +141,22 @@ class GmailConnectionStatus(BaseModel):
 
 class GmailOAuthCallback(BaseModel):
     code: str
+
+
+class CategorizationRuleBase(BaseModel):
+    pattern: str
+    category_id: str
+    priority: int = 0
+    is_regex: bool = False
+
+class CategorizationRuleCreate(CategorizationRuleBase):
+    id: Optional[str] = None
+
+class CategorizationRule(CategorizationRuleBase):
+    id: str
+    owner_id: str
+    category: Optional[Category] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

@@ -20,21 +20,9 @@ from .importers.bank_importers import (
     WellsFargoImporter,
     GenericBankImporter
 )
-
-# Import credit card PDF importers
-from .importers.credit_card_pdf_importers import (
-    ChaseCreditCardPDFImporter,
-    AmexCreditCardPDFImporter,
-    CitiCreditCardPDFImporter,
-    CapitalOneCreditCardPDFImporter,
-    GenericCreditCardPDFImporter
-)
-
-# Import bank PDF importers
 from .importers.bank_pdf_importers import HdfcBankPDFImporter
-
-# Import Money Manager importer
 from .importers.money_manager_importer import MoneyManagerImporter
+from .importers.generic_pdf_importer import GenericPdfTableImporter
 
 logger = logging.getLogger(__name__)
 
@@ -45,32 +33,48 @@ class BulkUploadService:
     def __init__(self, db: Session):
         self.db = db
         self.tx_service = TransactionService(db)
-        
-        # Register all importers
-        # Priority matters: specific importers should come before generic ones
+        self._register_importers()
+    
+    def _register_importers(self):
+        """Register all supported importers."""
         self.importers = {
-            # Specialized importers
             "money_manager": MoneyManagerImporter(),
-            
-            # Bank CSV/Excel importers
             "chase": ChaseBankImporter(),
             "bank_of_america": BankOfAmericaImporter(),
             "wells_fargo": WellsFargoImporter(),
-            
-            # Bank PDF importers
             "hdfc_bank": HdfcBankPDFImporter(),
             
-            # Credit card PDF importers
-            "chase_credit": ChaseCreditCardPDFImporter(),
-            "amex": AmexCreditCardPDFImporter(),
-            "citi": CitiCreditCardPDFImporter(),
-            "capital_one": CapitalOneCreditCardPDFImporter(),
+            # Credit Card PDF Importers (Refactored to Generic)
+            "chase_credit": GenericPdfTableImporter(
+                "Chase Credit Card", 
+                ["chase", "credit card"],
+                {"date": 0, "description": 1, "amount": 2}
+            ),
+            "amex": GenericPdfTableImporter(
+                "American Express",
+                ["american express", "amex"],
+                {"date": 0, "description": 1, "amount": 2}
+            ),
+            "citi": GenericPdfTableImporter(
+                "Citi",
+                ["citibank", "citi"],
+                {"date": 0, "description": 1, "amount": 2}
+            ),
+            "capital_one": GenericPdfTableImporter(
+                "Capital One",
+                ["capital one"],
+                {"date": 0, "description": 1, "amount": 2}
+            ),
             
-            # Generic fallbacks (should be last)
+            # Generic fallbacks
             "generic_bank": GenericBankImporter(),
-            "generic_credit_card": GenericCreditCardPDFImporter(),
+            "generic_pdf": GenericPdfTableImporter(
+                "Generic Statement",
+                ["statement", "bank"],
+                {"date": 0, "description": 1, "amount": 2}
+            ),
         }
-    
+
     async def process_upload(
         self,
         file: UploadFile,
@@ -79,22 +83,11 @@ class BulkUploadService:
         target_account_id: Optional[str] = None,
         currency: str = "INR",
         skip_duplicates: bool = True,
-        auto_detect: bool = True
+        auto_detect: bool = True,
+        password: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process uploaded file and import transactions.
-        
-        Args:
-            file: Uploaded file
-            source_type: Optional source type (if None, will auto-detect)
-            owner_id: User ID who owns the transactions
-            target_account_id: Optional account ID to assign all transactions to
-            currency: Currency code
-            skip_duplicates: Whether to skip duplicate transactions
-            auto_detect: Whether to auto-detect the file format if source_type not provided
-            
-        Returns:
-            Dictionary with import results
         """
         if not owner_id:
             raise HTTPException(status_code=400, detail="owner_id is required")
@@ -114,7 +107,7 @@ class BulkUploadService:
             importer = self.importers[source_type]
         elif auto_detect:
             # Auto-detect importer
-            importer = self._auto_detect_importer(content, file.filename)
+            importer = self._auto_detect_importer(content, file.filename, password=password)
             if not importer:
                 raise HTTPException(
                     status_code=400,
@@ -128,7 +121,7 @@ class BulkUploadService:
         
         # Parse file
         try:
-            import_result = importer.parse(content, file.filename)
+            import_result = importer.parse(content, file.filename, password=password)
         except Exception as e:
             logger.exception(f"Error parsing file: {e}")
             raise HTTPException(
@@ -166,7 +159,9 @@ class BulkUploadService:
         # Create import entity service for handling missing categories/accounts
         entity_service = ImportEntityService(self.db, owner_id)
         # Create category inference service for auto-categorization
-        category_inferrer = CategoryInferenceService()
+        category_inferrer = CategoryInferenceService(self.db, owner_id)
+        # Ensure user has default rules if they haven't customized anything yet
+        category_inferrer.seed_default_rules()
         
         # Process transactions: create missing categories/accounts and assign IDs
         for tx in final_transactions:
@@ -214,6 +209,17 @@ class BulkUploadService:
                 if dest_account_id:
                     tx.destination_account_id = dest_account_id
         
+        if preview:
+            return {
+                "message": f"Parsed {len(final_transactions)} transactions",
+                "count": len(final_transactions),
+                "source": importer.name,
+                "transactions": [tx.model_dump() for tx in final_transactions],
+                "duplicate_count": duplicate_count,
+                "parse_errors": import_result.errors,
+                "parse_warnings": import_result.warnings
+            }
+
         # Import transactions
         imported_count = 0
         failed_count = 0
@@ -268,7 +274,7 @@ class BulkUploadService:
         
         return response
     
-    def _auto_detect_importer(self, content: bytes, filename: Optional[str] = None):
+    def _auto_detect_importer(self, content: bytes, filename: Optional[str] = None, password: Optional[str] = None):
         """
         Auto-detect the appropriate importer for the file.
         
@@ -278,7 +284,7 @@ class BulkUploadService:
         # Try each importer's can_handle method
         for importer_name, importer in self.importers.items():
             try:
-                if importer.can_handle(content, filename):
+                if importer.can_handle(content, filename, password=password):
                     logger.info(f"Auto-detected importer: {importer_name}")
                     return importer
             except Exception as e:

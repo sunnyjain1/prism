@@ -7,6 +7,7 @@ from models import UserGmailToken, AccountSyncConfig, SyncStatus
 from core.encryption import encrypt_token, decrypt_token
 import uuid
 import datetime
+from datetime import timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ class SyncRepository:
             gmail_email=gmail_email,
             scopes=scopes,
             is_valid=True,
-            created_at=datetime.datetime.utcnow()
+            created_at=datetime.datetime.now(timezone.utc)
         )
         self.db.add(token)
         self.db.commit()
@@ -94,8 +95,7 @@ class SyncRepository:
         sync_interval_days: int = 30,
         attachment_filename_pattern: str = None,
         is_enabled: bool = True,
-        pdf_password: str = None,
-        subject_match_pattern: str = None
+        pdf_password: str = None
     ) -> AccountSyncConfig:
         encrypted_pw = encrypt_token(pdf_password) if pdf_password else None
         
@@ -107,12 +107,11 @@ class SyncRepository:
             importer_key=importer_key,
             sync_interval_days=sync_interval_days,
             attachment_filename_pattern=attachment_filename_pattern,
-            subject_match_pattern=subject_match_pattern,
             encrypted_pdf_password=encrypted_pw,
             is_enabled=is_enabled,
             last_sync_status=SyncStatus.idle.value,
-            created_at=datetime.datetime.utcnow(),
-            updated_at=datetime.datetime.utcnow()
+            created_at=datetime.datetime.now(datetime.UTC),
+            updated_at=datetime.datetime.now(timezone.utc)
         )
         self.db.add(config)
         self.db.commit()
@@ -128,7 +127,7 @@ class SyncRepository:
         for key, value in kwargs.items():
             if value is not None and hasattr(config, key):
                 setattr(config, key, value)
-        config.updated_at = datetime.datetime.utcnow()
+        config.updated_at = datetime.datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(config)
         return config
@@ -153,7 +152,7 @@ class SyncRepository:
 
     def get_due_sync_configs(self) -> List[AccountSyncConfig]:
         """Get all enabled configs that are due for sync."""
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(timezone.utc)
         configs = self.db.query(AccountSyncConfig).filter(
             AccountSyncConfig.is_enabled == True,
             AccountSyncConfig.last_sync_status != SyncStatus.syncing.value
@@ -171,12 +170,12 @@ class SyncRepository:
 
     def set_sync_status(
         self, config: AccountSyncConfig, status: SyncStatus,
-        error: str = None, txn_count: int = 0
+        error: str = None, txn_count: int = 0, update_timestamp: bool = True
     ):
         config.last_sync_status = status.value
         config.last_sync_error = error
         config.last_sync_txn_count = txn_count
-        if status == SyncStatus.success:
-            config.last_synced_at = datetime.datetime.utcnow()
-        config.updated_at = datetime.datetime.utcnow()
+        if status == SyncStatus.success and update_timestamp:
+            config.last_synced_at = datetime.datetime.now(timezone.utc)
+        config.updated_at = datetime.datetime.now(timezone.utc)
         self.db.commit()

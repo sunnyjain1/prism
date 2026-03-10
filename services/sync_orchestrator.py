@@ -61,13 +61,13 @@ class SyncOrchestrator:
             attachment = gmail.get_latest_attachment(
                 query=config.gmail_search_query,
                 after_date=config.last_synced_at,
-                filename_pattern=config.attachment_filename_pattern,
-                subject_pattern=config.subject_match_pattern
+                filename_pattern=config.attachment_filename_pattern
             )
 
             if not attachment:
                 # No new statement found — mark as success with 0 transactions
-                self.sync_repo.set_sync_status(config, SyncStatus.success, txn_count=0)
+                # But DON'T update last_synced_at, so we search from the same point next time
+                self.sync_repo.set_sync_status(config, SyncStatus.success, txn_count=0, update_timestamp=False)
                 result["status"] = "success"
                 result["error"] = "No new statement found in Gmail"
                 return result

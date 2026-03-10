@@ -28,6 +28,28 @@ def create_transaction(
     service = TransactionService(db)
     return service.create_transaction(transaction, current_user.id)
 
+@router.post("/bulk", response_model=List[schemas.Transaction])
+def create_transactions_bulk(
+    transactions_in: List[schemas.TransactionCreate],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create multiple transactions in one go."""
+    service = TransactionService(db)
+    created_transactions = []
+    
+    # Use a transaction for atomicity
+    try:
+        for tx_in in transactions_in:
+            tx = service.create_transaction(tx_in, current_user.id)
+            created_transactions.append(tx)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Failed to create transactions: {str(e)}")
+        
+    return created_transactions
+
 @router.get("", response_model=List[schemas.Transaction])
 def read_transactions(
     month: Optional[int] = None, 

@@ -12,9 +12,10 @@ async def bulk_upload_file(
     file: UploadFile = File(...),
     source_type: Optional[str] = Form(None),
     account_id: Optional[str] = Form(None),
-    currency: str = Form("INR"),
     skip_duplicates: bool = Form(True),
     auto_detect: bool = Form(True),
+    password: Optional[str] = Form(None),
+    preview: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -37,7 +38,9 @@ async def bulk_upload_file(
         target_account_id=account_id,
         currency=currency,
         skip_duplicates=skip_duplicates,
-        auto_detect=auto_detect
+        auto_detect=auto_detect,
+        password=password,
+        preview=preview
     )
 
 @router.get("/formats")
