@@ -209,17 +209,6 @@ class BulkUploadService:
                 if dest_account_id:
                     tx.destination_account_id = dest_account_id
         
-        if preview:
-            return {
-                "message": f"Parsed {len(final_transactions)} transactions",
-                "count": len(final_transactions),
-                "source": importer.name,
-                "transactions": [tx.model_dump() for tx in final_transactions],
-                "duplicate_count": duplicate_count,
-                "parse_errors": import_result.errors,
-                "parse_warnings": import_result.warnings
-            }
-
         # Import transactions
         imported_count = 0
         failed_count = 0
