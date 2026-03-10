@@ -76,6 +76,57 @@ class GmailService:
             logger.error(f"Gmail search failed: {e}")
             raise
 
+    def search_all_messages(
+        self, query: str, after_date: Optional[datetime] = None
+    ) -> List[Dict]:
+        """
+        Paginated Gmail search that returns **all** matching messages.
+
+        Unlike :meth:`search_messages`, this method follows ``nextPageToken``
+        cursors so it can retrieve thousands of messages needed for a
+        multi-year historical sync.
+
+        Args:
+            query: Gmail search query string
+            after_date: Only return messages after this date
+
+        Returns:
+            List of message metadata dicts with 'id' and 'threadId'
+        """
+        if after_date:
+            from datetime import timedelta
+            search_date = after_date - timedelta(days=1)
+            date_str = search_date.strftime("%Y/%m/%d")
+            full_query = f"{query} after:{date_str}"
+        else:
+            full_query = query
+
+        logger.info(f"Gmail paginated search: {full_query}")
+
+        all_messages: List[Dict] = []
+        page_token = None
+
+        try:
+            while True:
+                params: Dict = {"userId": "me", "q": full_query, "maxResults": 100}
+                if page_token:
+                    params["pageToken"] = page_token
+
+                response = self.service.users().messages().list(**params).execute()
+                messages = response.get("messages", [])
+                all_messages.extend(messages)
+
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+
+        except Exception as e:
+            logger.error(f"Gmail paginated search failed: {e}")
+            raise
+
+        logger.info(f"Paginated search found {len(all_messages)} total messages")
+        return all_messages
+
     def get_message(self, message_id: str) -> Dict:
         """Get full message details."""
         return self.service.users().messages().get(
@@ -178,3 +229,41 @@ class GmailService:
                 
         logger.warning(f"No matching attachments found in the last {len(messages)} messages")
         return None
+
+    def get_all_attachments_since(
+        self, query: str, after_date: Optional[datetime] = None,
+        filename_pattern: Optional[str] = None
+    ) -> List[Tuple[str, bytes]]:
+        """
+        Return **all** attachments found since ``after_date``.
+
+        Uses the paginated :meth:`search_all_messages` so it can handle
+        multi-year historical syncs without hitting the ``max_results`` cap.
+
+        Args:
+            query: Gmail search query string
+            after_date: Only consider messages after this date
+            filename_pattern: Optional regex to filter attachments by filename
+
+        Returns:
+            List of (filename, content_bytes) tuples, oldest-first ordering
+            is not guaranteed (Gmail returns newest-first by default).
+        """
+        messages = self.search_all_messages(query, after_date=after_date)
+        if not messages:
+            return []
+
+        all_attachments: List[Tuple[str, bytes]] = []
+        for msg in messages:
+            message_id = msg["id"]
+            try:
+                attachments = self.get_attachments(message_id, filename_pattern)
+                all_attachments.extend(attachments)
+            except Exception as e:
+                logger.warning(f"Skipping message {message_id} due to error: {e}")
+
+        logger.info(
+            f"Historical search found {len(all_attachments)} attachments "
+            f"across {len(messages)} messages"
+        )
+        return all_attachments

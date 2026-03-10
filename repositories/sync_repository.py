@@ -95,7 +95,8 @@ class SyncRepository:
         sync_interval_days: int = 30,
         attachment_filename_pattern: str = None,
         is_enabled: bool = True,
-        pdf_password: str = None
+        pdf_password: str = None,
+        sync_start_date: datetime.datetime = None
     ) -> AccountSyncConfig:
         encrypted_pw = encrypt_token(pdf_password) if pdf_password else None
         
@@ -109,6 +110,7 @@ class SyncRepository:
             attachment_filename_pattern=attachment_filename_pattern,
             encrypted_pdf_password=encrypted_pw,
             is_enabled=is_enabled,
+            sync_start_date=sync_start_date,
             last_sync_status=SyncStatus.idle.value,
             created_at=datetime.datetime.now(datetime.UTC),
             updated_at=datetime.datetime.now(timezone.utc)
