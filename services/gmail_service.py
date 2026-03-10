@@ -15,6 +15,16 @@ from core.encryption import decrypt_token
 logger = logging.getLogger(__name__)
 
 
+def _safe_b64decode(data: str) -> bytes:
+    """Base64url-decode a string, adding padding if necessary."""
+    # Strip any existing padding, then re-add the exact amount needed
+    data = data.rstrip("=")
+    padding = 4 - len(data) % 4
+    if padding != 4:
+        data += "=" * padding
+    return base64.urlsafe_b64decode(data)
+
+
 class GmailService:
     """Handles Gmail API interactions for fetching bank statements."""
 
@@ -89,11 +99,14 @@ class GmailService:
         attachments = []
         payload = message.get("payload", {})
 
-        # Helper to recursively find parts with attachments
+        # Helper to recursively find parts with attachments.
+        # Gmail stores large attachments via a separate attachmentId resource, and small
+        # attachments (typically < 25 KB) inline as base64url data in body.data.
         def _extract_attachment_parts(parts: List[Dict]) -> List[Dict]:
             found = []
             for p in parts:
-                if p.get("filename") and p.get("body", {}).get("attachmentId"):
+                body = p.get("body", {})
+                if p.get("filename") and (body.get("attachmentId") or body.get("data")):
                     found.append(p)
                 if "parts" in p:
                     found.extend(_extract_attachment_parts(p["parts"]))
@@ -101,7 +114,8 @@ class GmailService:
 
         # Gather all attachment parts (could be at root payload, or nested in parts)
         all_attachment_parts = []
-        if payload.get("filename") and payload.get("body", {}).get("attachmentId"):
+        root_body = payload.get("body", {})
+        if payload.get("filename") and (root_body.get("attachmentId") or root_body.get("data")):
             all_attachment_parts.append(payload)
         if "parts" in payload:
             all_attachment_parts.extend(_extract_attachment_parts(payload["parts"]))
@@ -114,14 +128,24 @@ class GmailService:
                 if not re.search(filename_pattern, filename, re.IGNORECASE):
                     continue
 
-            attachment_id = part.get("body", {}).get("attachmentId")
-            
-            try:
-                attachment = self.service.users().messages().attachments().get(
-                    userId="me", messageId=message_id, id=attachment_id
-                ).execute()
+            body = part.get("body", {})
+            attachment_id = body.get("attachmentId")
+            inline_data = body.get("data")
 
-                data = base64.urlsafe_b64decode(attachment["data"])
+            try:
+                if attachment_id:
+                    # Large attachment: fetch via the attachments API
+                    attachment = self.service.users().messages().attachments().get(
+                        userId="me", messageId=message_id, id=attachment_id
+                    ).execute()
+                    raw = attachment["data"]
+                elif inline_data:
+                    # Small attachment: data embedded directly in the message part
+                    raw = inline_data
+                else:
+                    continue
+
+                data = _safe_b64decode(raw)
                 attachments.append((filename, data))
                 logger.info(f"Downloaded attachment: {filename} ({len(data)} bytes)")
             except Exception as e:
