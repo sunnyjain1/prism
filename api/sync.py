@@ -1,7 +1,7 @@
 """
 Sync API endpoints for Gmail OAuth, account sync configuration, and manual triggers.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -201,7 +201,8 @@ def create_or_update_sync_config(
         sync_interval_days=config_in.sync_interval_days,
         attachment_filename_pattern=config_in.attachment_filename_pattern,
         is_enabled=config_in.is_enabled,
-        pdf_password=config_in.pdf_password
+        pdf_password=config_in.pdf_password,
+        sync_start_date=config_in.sync_start_date
     )
     created.has_pdf_password = bool(created.encrypted_pdf_password)
     return created
@@ -264,13 +265,37 @@ def delete_sync_config(
 
 # ─── Sync Trigger & Status ───────────────────────────────────
 
+def _run_sync_in_background(account_id: str, owner_id: str):
+    """Background task: run sync with its own DB session."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        sync_repo = SyncRepository(db)
+        config = sync_repo.get_sync_config(account_id, owner_id)
+        if config:
+            orchestrator = SyncOrchestrator(db)
+            orchestrator.sync_account(config)
+    except Exception as e:
+        logger.exception(f"Background sync failed for account {account_id}: {e}")
+    finally:
+        db.close()
+
+
 @router.post("/accounts/{account_id}/trigger")
 def trigger_sync(
     account_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Manually trigger a sync for an account."""
+    """
+    Manually trigger a sync for an account.
+
+    The sync runs in the background so the endpoint returns immediately.
+    Use GET /api/sync/accounts/status to poll for the result.
+    This is especially useful for historical syncs that may take a long time
+    when the account has a ``sync_start_date`` set to fetch years of old data.
+    """
     sync_repo = SyncRepository(db)
     config = sync_repo.get_sync_config(account_id, current_user.id)
     if not config:
@@ -281,9 +306,17 @@ def trigger_sync(
     if not token or not token.is_valid:
         raise HTTPException(status_code=400, detail="Gmail not connected. Please connect Gmail first.")
 
-    orchestrator = SyncOrchestrator(db)
-    result = orchestrator.sync_account(config)
-    return result
+    # Prevent starting a new sync if one is already running
+    from models import SyncStatus
+    if config.last_sync_status == SyncStatus.syncing.value:
+        raise HTTPException(status_code=409, detail="A sync is already in progress for this account.")
+
+    background_tasks.add_task(_run_sync_in_background, account_id, current_user.id)
+    return {
+        "message": "Sync started in background",
+        "account_id": account_id,
+        "status": "queued"
+    }
 
 
 @router.get("/accounts/status")

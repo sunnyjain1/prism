@@ -118,6 +118,9 @@ class AccountSyncConfig(Base):
     attachment_filename_pattern = Column(String, nullable=True)
     encrypted_pdf_password = Column(String, nullable=True)
 
+    # Historical sync: earliest date to sync from on first run
+    sync_start_date = Column(DateTime, nullable=True)
+
     # Sync state
     last_synced_at = Column(DateTime, nullable=True)
     last_sync_status = Column(String, default=SyncStatus.idle.value)

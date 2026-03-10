@@ -113,6 +113,11 @@ class SyncConfigBase(BaseModel):
     sync_interval_days: int = Field(default=30, ge=1)
     attachment_filename_pattern: Optional[str] = None
     is_enabled: bool = True
+    sync_start_date: Optional[datetime] = Field(
+        default=None,
+        description="Earliest date to sync from on the first run. "
+                    "Set this to sync historical data (e.g. 2-3 years back)."
+    )
 
 class SyncConfigCreate(SyncConfigBase):
     pdf_password: Optional[str] = None
@@ -124,6 +129,7 @@ class SyncConfigUpdate(BaseModel):
     attachment_filename_pattern: Optional[str] = None
     is_enabled: Optional[bool] = None
     pdf_password: Optional[str] = None
+    sync_start_date: Optional[datetime] = None
 
 class SyncConfigOut(SyncConfigBase):
     id: str
