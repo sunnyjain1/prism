@@ -40,8 +40,10 @@ def upgrade() -> None:
         op.create_index(op.f('ix_categorization_rules_id'), 'categorization_rules', ['id'], unique=False)
 
     # 2. Fix Accounts (Add unique constraint correctly using batch mode for SQLite)
-    with op.batch_alter_table('accounts', schema=None) as batch_op:
-        batch_op.create_unique_constraint('uq_account_name_owner', ['name', 'owner_id'])
+    existing_uqs = [uq['name'] for uq in inspector.get_unique_constraints('accounts')]
+    if 'uq_account_name_owner' not in existing_uqs:
+        with op.batch_alter_table('accounts', schema=None) as batch_op:
+            batch_op.create_unique_constraint('uq_account_name_owner', ['name', 'owner_id'])
 
     # 3. Fix Account Sync Configs (Drop unused column)
     with op.batch_alter_table('account_sync_configs', schema=None) as batch_op:
