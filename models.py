@@ -27,6 +27,10 @@ class Category(Base):
     
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
 
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc), onupdate=lambda: datetime.datetime.now(timezone.utc))
+
+
 
 
 class Account(Base):
@@ -48,6 +52,9 @@ class Account(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     deleted_at = Column(DateTime, nullable=True)
 
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc), onupdate=lambda: datetime.datetime.now(timezone.utc))
+
     __table_args__ = (
         UniqueConstraint('name', 'owner_id', name='uq_account_name_owner'),
     )
@@ -68,8 +75,9 @@ class Transaction(Base):
     
     owner_id = Column(String, ForeignKey("users.id"), nullable=False)
 
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc), onupdate=lambda: datetime.datetime.now(timezone.utc))
 
-    
     # Category relation
     category_id = Column(String, ForeignKey("categories.id"), nullable=True)
     category = relationship("Category")
@@ -94,6 +102,7 @@ class UserGmailToken(Base):
     scopes = Column(String, nullable=True)
     is_valid = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc), onupdate=lambda: datetime.datetime.now(timezone.utc))
 
 
 class SyncStatus(str, enum.Enum):

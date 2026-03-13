@@ -1,6 +1,8 @@
-from sqlalchemy import Column, String, Boolean, Enum as sqlalchemyEnum
+from sqlalchemy import Column, String, Boolean, DateTime, Enum as sqlalchemyEnum
 from database import Base
 from sqlalchemy.orm import relationship
+import datetime
+from datetime import timezone
 
 import enum
 import uuid
@@ -20,8 +22,10 @@ class User(Base):
     role = Column(String, default=UserRole.EDITOR)
     is_active = Column(Boolean, default=True)
 
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc), onupdate=lambda: datetime.datetime.now(timezone.utc))
+
     # Relationships
     accounts = relationship("Account", backref="owner", cascade="all, delete-orphan")
     categories = relationship("Category", backref="owner", cascade="all, delete-orphan")
     transactions = relationship("Transaction", backref="owner", cascade="all, delete-orphan")
-
