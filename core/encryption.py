@@ -4,7 +4,7 @@ Uses Fernet symmetric encryption with the app's SECRET_KEY.
 """
 import base64
 import hashlib
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from core.config import settings
 
 
@@ -28,4 +28,9 @@ def encrypt_token(plaintext: str) -> str:
 def decrypt_token(ciphertext: str) -> str:
     """Decrypt a token string. Returns plaintext."""
     f = _get_fernet()
-    return f.decrypt(ciphertext.encode()).decode()
+    try:
+        return f.decrypt(ciphertext.encode()).decode()
+    except InvalidToken:
+        raise ValueError("Decryption failed: Invalid token or key mismatch. Please re-save your settings.")
+    except Exception as e:
+        raise ValueError(f"Decrypted failed: {str(e)}")

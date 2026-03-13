@@ -58,12 +58,25 @@ class SyncOrchestrator:
 
         try:
             # Step 2: Get Gmail refresh token
-            refresh_token = self.sync_repo.get_decrypted_refresh_token(config.owner_id)
+            try:
+                refresh_token = self.sync_repo.get_decrypted_refresh_token(config.owner_id)
+            except (ValueError, Exception) as decrypt_err:
+                raise Exception(
+                    f"Failed to decrypt Gmail token: {decrypt_err}. "
+                    "Please disconnect and reconnect Gmail in Sync Settings."
+                )
             if not refresh_token:
                 raise Exception("Gmail not connected. Please connect Gmail in settings.")
 
             gmail = GmailService(refresh_token)
-            pdf_password = self.sync_repo.get_decrypted_pdf_password(config)
+
+            try:
+                pdf_password = self.sync_repo.get_decrypted_pdf_password(config)
+            except (ValueError, Exception) as decrypt_err:
+                raise Exception(
+                    f"Failed to decrypt PDF password: {decrypt_err}. "
+                    "Please re-save your PDF password in Sync Settings."
+                )
 
             # Decide between historical (bulk) sync and incremental sync.
             # Historical sync is triggered on the very first run when the user
