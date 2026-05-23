@@ -27,10 +27,28 @@ from services.scheduler_service import scheduler_lifespan
 # Database initialization is now handled by Alembic migrations in start.sh
 
 
+def _run_migrations() -> None:
+    """Run Alembic migrations at startup so the DB schema is always current."""
+    import logging
+    log = logging.getLogger("alembic.startup")
+    try:
+        from alembic import command
+        from alembic.config import Config
+        alembic_cfg = Config("alembic.ini")
+        command.upgrade(alembic_cfg, "head")
+        log.info("Database migrations applied successfully.")
+    except Exception:
+        log.exception(
+            "Alembic migration failed at startup — the app will still start "
+            "but some features may be unavailable until migrations succeed."
+        )
+
+
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     setup_logging()
     init_sentry()
+    _run_migrations()
     app.state.started_at = monotonic()
     app.state.metrics = APIMetrics()
 
