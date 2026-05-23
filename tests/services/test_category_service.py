@@ -23,6 +23,13 @@ def test_create_category(category_service, setup_user):
     assert cat.name == "Food"
     assert cat.owner_id == user.id
 
+
+def test_create_category_generates_id(category_service, setup_user):
+    user = setup_user
+    cat = category_service.create_category(CategoryCreate(name="Auto ID", type=TransactionType.expense), user.id)
+    assert cat.id
+    assert cat.owner_id == user.id
+
 def test_get_categories(category_service, setup_user):
     user = setup_user
     category_service.create_category(CategoryCreate(id="cat1", name="C1", type=TransactionType.expense), user.id)

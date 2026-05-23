@@ -24,6 +24,13 @@ def test_create_account(account_service, setup_user, db_session):
     assert acc.name == "Checking"
     assert acc.owner_id == user.id
 
+
+def test_create_account_generates_id(account_service, setup_user):
+    user = setup_user
+    acc = account_service.create_account(AccountCreate(name="Auto ID", type="checking"), user.id)
+    assert acc.id
+    assert acc.owner_id == user.id
+
 def test_create_duplicate_account_fails(account_service, setup_user):
     user = setup_user
     acc_in = AccountCreate(id="acc1", name="Checking", type="checking", currency="USD", balance=0.0)

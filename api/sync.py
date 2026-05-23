@@ -1,11 +1,12 @@
 """
 Sync API endpoints for Gmail OAuth, account sync configuration, and manual triggers.
 """
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
-from typing import Optional
+from datetime import datetime, timedelta, timezone
 import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 
 from core.dependencies import get_db, get_current_user
 from core.config import settings
@@ -17,12 +18,33 @@ import schemas
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/sync", tags=["sync"])
+router = APIRouter(prefix="/sync", tags=["sync"])
+
+
+def _create_gmail_oauth_state(user_id: str) -> str:
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=settings.GMAIL_OAUTH_STATE_EXPIRE_MINUTES
+    )
+    return jwt.encode(
+        {"sub": user_id, "purpose": "gmail-oauth", "exp": expires_at},
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+
+def _validate_gmail_oauth_state(state: str, expected_user_id: str) -> None:
+    try:
+        payload = jwt.decode(state, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError as exc:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state") from exc
+
+    if payload.get("purpose") != "gmail-oauth" or payload.get("sub") != expected_user_id:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
 
 # ─── Gmail OAuth ──────────────────────────────────────────────
 
-@router.get("/gmail/auth-url")
+@router.get("/gmail/auth-url", response_model=schemas.AuthUrlResponse)
 def get_gmail_auth_url(current_user: User = Depends(get_current_user)):
     """Get the Google OAuth consent URL for Gmail access."""
     from google_auth_oauthlib.flow import Flow
@@ -51,13 +73,14 @@ def get_gmail_auth_url(current_user: User = Depends(get_current_user)):
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
-        state=current_user.id  # Pass user ID as state for the callback
+        # Sign the user id so the callback can detect tampering/replay across users.
+        state=_create_gmail_oauth_state(current_user.id)
     )
 
     return {"auth_url": auth_url, "state": state}
 
 
-@router.post("/gmail/callback")
+@router.post("/gmail/callback", response_model=schemas.GmailOAuthCallbackResponse)
 def gmail_oauth_callback(
     payload: schemas.GmailOAuthCallback,
     db: Session = Depends(get_db),
@@ -68,6 +91,8 @@ def gmail_oauth_callback(
     Called by the frontend after Google redirects back with the code.
     """
     from google_auth_oauthlib.flow import Flow
+
+    _validate_gmail_oauth_state(payload.state, current_user.id)
 
     flow = Flow.from_client_config(
         {
@@ -86,7 +111,7 @@ def gmail_oauth_callback(
     # Google often returns more scopes than requested (e.g. profile, email)
     # This prevents oauthlib from raising a Warning/Exception for the scope mismatch
     import os
-    os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+    os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
     try:
         flow.fetch_token(code=payload.code)
@@ -144,7 +169,7 @@ def get_gmail_status(
     return schemas.GmailConnectionStatus(is_connected=False)
 
 
-@router.delete("/gmail/disconnect")
+@router.delete("/gmail/disconnect", response_model=schemas.MessageResponse)
 def disconnect_gmail(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -249,7 +274,7 @@ def update_sync_config(
     return updated
 
 
-@router.delete("/accounts/{account_id}/config")
+@router.delete("/accounts/{account_id}/config", response_model=schemas.MessageResponse)
 def delete_sync_config(
     account_id: str,
     db: Session = Depends(get_db),
@@ -281,7 +306,7 @@ def _run_sync_in_background(account_id: str, owner_id: str):
         db.close()
 
 
-@router.post("/accounts/{account_id}/trigger")
+@router.post("/accounts/{account_id}/trigger", response_model=schemas.SyncTriggerResponse)
 def trigger_sync(
     account_id: str,
     background_tasks: BackgroundTasks,
@@ -292,7 +317,7 @@ def trigger_sync(
     Manually trigger a sync for an account.
 
     The sync runs in the background so the endpoint returns immediately.
-    Use GET /api/sync/accounts/status to poll for the result.
+    Use GET /api/v1/sync/accounts/status to poll for the result.
     This is especially useful for historical syncs that may take a long time
     when the account has a ``sync_start_date`` set to fetch years of old data.
     """
@@ -319,7 +344,7 @@ def trigger_sync(
     }
 
 
-@router.get("/accounts/status")
+@router.get("/accounts/status", response_model=list[schemas.SyncConfigOut])
 def get_all_sync_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -334,7 +359,7 @@ def get_all_sync_status(
     return out
 
 
-@router.get("/importers")
+@router.get("/importers", response_model=dict[str, dict[str, object]])
 def get_available_importers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)

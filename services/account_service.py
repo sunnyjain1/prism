@@ -5,6 +5,7 @@ from schemas import AccountCreate
 from repositories.account_repository import AccountRepository
 from typing import List, Optional
 from datetime import datetime, timezone
+import uuid
 
 class AccountService:
     def __init__(self, db: Session):
@@ -18,6 +19,7 @@ class AccountService:
             raise HTTPException(status_code=400, detail=f"Account with name '{account_in.name}' already exists.")
             
         data = account_in.model_dump()
+        data["id"] = data.get("id") or str(uuid.uuid4())
         data["owner_id"] = owner_id
         data["is_deleted"] = False
         return self.repo.create(data)

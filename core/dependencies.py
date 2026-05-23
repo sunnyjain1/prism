@@ -1,12 +1,15 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jose import JWTError
 from sqlalchemy.orm import Session
+
+from auth_utils import decode_token
+from core.logging import set_user_id
 from database import SessionLocal
 from user_models import User, UserRole
-from core.config import settings
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
 
 def get_db():
     db = SessionLocal()
@@ -15,8 +18,10 @@ def get_db():
     finally:
         db.close()
 
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), 
+    request: Request = None,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> User:
     credentials_exception = HTTPException(
@@ -24,23 +29,28 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
-    # Handle missing token explicitly to avoid internal error in jwt.decode
+
     if not token:
         raise credentials_exception
-        
+
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = decode_token(token)
         user_id: str = payload.get("sub")
-        if user_id is None:
+        token_type = payload.get("type")
+        if user_id is None or token_type not in (None, "access"):
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    
+
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise credentials_exception
+
+    if request is not None:
+        request.state.user_id = user.id
+    set_user_id(user.id)
     return user
+
 
 def check_role(roles: list[UserRole]):
     def role_checker(user: User = Depends(get_current_user)):

@@ -4,10 +4,10 @@ from models import Category
 from schemas import CategoryCreate
 from repositories.category_repository import CategoryRepository
 from typing import List
+import uuid
 
 class CategoryService:
     def create_default_categories(self, owner_id: str):
-        import uuid
         defaults = [
             {"name": "Food & Dining", "type": "expense", "color": "#ef4444"},
             {"name": "Transportation", "type": "expense", "color": "#f59e0b"},
@@ -36,6 +36,7 @@ class CategoryService:
 
     def create_category(self, category_in: CategoryCreate, owner_id: str) -> Category:
         data = category_in.model_dump()
+        data["id"] = data.get("id") or str(uuid.uuid4())
         data["owner_id"] = owner_id
         return self.repo.create(data)
 

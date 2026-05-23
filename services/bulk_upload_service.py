@@ -84,7 +84,8 @@ class BulkUploadService:
         currency: str = "INR",
         skip_duplicates: bool = True,
         auto_detect: bool = True,
-        password: Optional[str] = None
+        password: Optional[str] = None,
+        preview: bool = False
     ) -> Dict[str, Any]:
         """
         Process uploaded file and import transactions.
@@ -155,6 +156,21 @@ class BulkUploadService:
             
             if duplicate_count > 0:
                 logger.info(f"Skipped {duplicate_count} duplicates ({batch_dups} in batch, {len(cross_duplicates)} cross-batch)")
+
+        if preview:
+            preview_transactions = [tx.model_dump(mode="json") for tx in final_transactions[:50]]
+            return {
+                "message": f"Preview generated for {len(final_transactions)} transactions",
+                "preview": True,
+                "count": len(final_transactions),
+                "source": importer.name,
+                "total_parsed": len(import_result.transactions),
+                "duplicates_skipped": duplicate_count,
+                "parse_errors": import_result.errors[:10],
+                "parse_warnings": import_result.warnings[:10],
+                "metadata": import_result.metadata,
+                "transactions": preview_transactions,
+            }
         
         # Create import entity service for handling missing categories/accounts
         entity_service = ImportEntityService(self.db, owner_id)

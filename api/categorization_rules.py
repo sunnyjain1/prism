@@ -8,7 +8,7 @@ from user_models import User
 import schemas
 from models import CategorizationRule
 
-router = APIRouter(prefix="/api/categorization-rules", tags=["categorization-rules"])
+router = APIRouter(prefix="/categorization-rules", tags=["categorization-rules"])
 
 @router.get("", response_model=List[schemas.CategorizationRule])
 def get_rules(
@@ -63,7 +63,7 @@ def update_rule(
     db.refresh(rule)
     return rule
 
-@router.delete("/{rule_id}")
+@router.delete("/{rule_id}", response_model=schemas.OkResponse)
 def delete_rule(
     rule_id: str,
     db: Session = Depends(get_db),

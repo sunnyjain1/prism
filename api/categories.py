@@ -6,7 +6,7 @@ from user_models import User
 import schemas
 from services.category_service import CategoryService
 
-router = APIRouter(prefix="/api/categories", tags=["categories"])
+router = APIRouter(prefix="/categories", tags=["categories"])
 
 @router.get("", response_model=List[schemas.Category])
 def read_categories(
@@ -25,7 +25,7 @@ def create_category(
     service = CategoryService(db)
     return service.create_category(category, current_user.id)
 
-@router.delete("/{category_id}")
+@router.delete("/{category_id}", response_model=schemas.MessageResponse)
 def delete_category(
     category_id: str, 
     db: Session = Depends(get_db), 

@@ -36,3 +36,13 @@ ENV/
 .vscode/
 .idea/
 .DS_Store
+
+generated_reports/
+
+# Local PostgreSQL (dev only)
+.postgres-data/
+.postgres-socket/
+postgres.log
+
+# Migration scripts (one-time use, not needed in repo)
+migrate_sqlite_to_postgres.py

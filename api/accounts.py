@@ -8,7 +8,7 @@ from services.account_service import AccountService
 from services.account_discovery_service import AccountDiscoveryService
 from repositories.sync_repository import SyncRepository
 
-router = APIRouter(prefix="/api/accounts", tags=["accounts"])
+router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 @router.get("/discover", response_model=List[dict])
 def discover_accounts(
@@ -23,7 +23,7 @@ def discover_accounts(
     discovery_service = AccountDiscoveryService(refresh_token)
     return discovery_service.discover_accounts()
 
-@router.get("/{account_id}/portfolio", response_model=dict)
+@router.get("/{account_id}/portfolio", response_model=schemas.PortfolioResponse)
 def get_account_portfolio(
     account_id: str,
     db: Session = Depends(get_db),
@@ -100,7 +100,7 @@ def restore_account(
     service = AccountService(db)
     return service.restore_account(account_id, current_user.id)
 
-@router.delete("/{account_id}")
+@router.delete("/{account_id}", response_model=schemas.MessageResponse)
 def delete_account(
     account_id: str,
     db: Session = Depends(get_db),

@@ -1,14 +1,18 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint, Boolean
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint, Boolean, JSON, func
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
 from datetime import timezone
 import enum
+from uuid import uuid4
 
 class AccountType(str, enum.Enum):
     checking = "checking"
+    current = "current"
     savings = "savings"
     credit = "credit"
+    credit_card = "credit_card"
+    loan = "loan"
     investment = "investment"
     cash = "cash"
 
@@ -81,6 +85,8 @@ class Transaction(Base):
     # Category relation
     category_id = Column(String, ForeignKey("categories.id"), nullable=True)
     category = relationship("Category")
+    categorization_method = Column(String, nullable=True)
+    categorization_confidence = Column(Float, nullable=True)
     
     # Account relations
     account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
@@ -89,6 +95,61 @@ class Transaction(Base):
     # Transfer relations
     destination_account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
     destination_account = relationship("Account", foreign_keys=[destination_account_id])
+
+
+class Budget(Base):
+    __tablename__ = "budgets"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    amount = Column(Float, nullable=False)
+    period = Column(String, nullable=False)
+    start_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    category = relationship("Category")
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="INR")
+    frequency = Column(String, nullable=False)
+    category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    next_due_date = Column(Date, nullable=True)
+    last_paid_date = Column(Date, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    auto_detected = Column(Boolean, default=False, nullable=False)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    category = relationship("Category")
+    account = relationship("Account", foreign_keys=[account_id])
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String, nullable=False)
+    message = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    category = Column(String, nullable=True)
+    is_read = Column(Boolean, default=False, nullable=False)
+    action_url = Column(String, nullable=True)
+    extra_metadata = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
 
 
 class UserGmailToken(Base):
@@ -158,3 +219,134 @@ class CategorizationRule(Base):
 
     # Relationships
     category = relationship("Category")
+
+
+class MerchantCategoryMapping(Base):
+    __tablename__ = "merchant_category_mappings"
+
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    merchant_pattern = Column(String, nullable=False)
+    category_id = Column(String, ForeignKey("categories.id"), nullable=False)
+    confidence = Column(Float, default=1.0)
+    usage_count = Column(Integer, default=1)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    category = relationship("Category")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "merchant_pattern", name="uq_merchant_category_user_pattern"),
+    )
+
+
+class Investment(Base):
+    __tablename__ = "investments"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    name = Column(String, nullable=False)
+    type = Column(String, nullable=False)
+    symbol = Column(String, nullable=True)
+    quantity = Column(Float, nullable=True)
+    buy_price = Column(Float, nullable=True)
+    buy_date = Column(Date, nullable=True)
+    current_price = Column(Float, nullable=True)
+    current_value = Column(Float, nullable=True)
+    invested_amount = Column(Float, nullable=False)
+    currency = Column(String, default="INR")
+    maturity_date = Column(Date, nullable=True)
+    interest_rate = Column(Float, nullable=True)
+    notes = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    last_updated = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class NetWorthSnapshot(Base):
+    __tablename__ = "net_worth_snapshots"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    total_assets = Column(Float, nullable=False)
+    total_liabilities = Column(Float, nullable=False)
+    net_worth = Column(Float, nullable=False)
+    breakdown = Column(JSON, nullable=True)
+    snapshot_date = Column(Date, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+
+
+class HealthScoreSnapshot(Base):
+    __tablename__ = "health_score_snapshots"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    score = Column(Integer, nullable=False)
+    grade = Column(String, nullable=False)
+    components = Column(JSON, nullable=True)
+    recommendations = Column(JSON, nullable=True)
+    snapshot_date = Column(Date, nullable=False, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "snapshot_date", name="uq_health_score_snapshot_user_date"),
+    )
+
+
+class Loan(Base):
+    __tablename__ = "loans"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    loan_type = Column(String, nullable=False)
+    principal_amount = Column(Float, nullable=False)
+    outstanding_amount = Column(Float, nullable=False)
+    interest_rate = Column(Float, nullable=False)
+    emi_amount = Column(Float, nullable=True)
+    tenure_months = Column(Integer, nullable=True)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    emi_day = Column(Integer, nullable=True)
+    lender = Column(String, nullable=True)
+    account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    account = relationship("Account", foreign_keys=[account_id])
+
+
+class ReportJob(Base):
+    __tablename__ = "report_jobs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    report_type = Column(String, nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    format = Column(String, default="pdf", nullable=False)
+    status = Column(String, default="pending", nullable=False)
+    file_path = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class EmailReportPreference(Base):
+    __tablename__ = "email_report_preferences"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    report_type = Column(String, nullable=False)
+    frequency = Column(String, nullable=False)
+    is_enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "report_type", name="uq_email_report_pref_user_type"),
+    )

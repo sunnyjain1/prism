@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('accounts', sa.Column('is_deleted', sa.Boolean(), nullable=False, server_default=sa.text('0')))
+    op.add_column('accounts', sa.Column('is_deleted', sa.Boolean(), nullable=False, server_default=sa.false()))
     op.add_column('accounts', sa.Column('deleted_at', sa.DateTime(), nullable=True))
 
 

@@ -7,7 +7,7 @@ class AccountRepository(BaseRepository[Account]):
     def __init__(self, db: Session):
         super().__init__(Account, db)
 
-    def get_by_owner(self, owner_id: str, skip: int = 0, limit: int = 100) -> List[Account]:
+    def get_by_owner(self, owner_id: str, skip: int = 0, limit: int = 500) -> List[Account]:
         return self.db.query(self.model).filter(
             self.model.owner_id == owner_id,
             self.model.is_deleted == False

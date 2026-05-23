@@ -2,8 +2,8 @@ import pytest
 from datetime import datetime
 from fastapi import HTTPException
 from services.transaction_service import TransactionService
-from schemas import TransactionCreate
-from models import TransactionType, Account, Category, Transaction
+from schemas import TransactionCreate, TransactionUpdate
+from models import TransactionType, Account, Category, Notification, Transaction
 from user_models import User
 
 @pytest.fixture
@@ -87,6 +87,29 @@ def test_create_transfer_transaction(transaction_service, setup_data, db_session
     db_session.refresh(acc2)
     assert acc1.balance == 800.0
     assert acc2.balance == 5200.0
+
+def test_large_transaction_creates_notification(transaction_service, setup_data, db_session):
+    user, acc1, _, _ = setup_data
+    tx_in = TransactionCreate(
+        id="tx_large_alert",
+        amount=15000.0,
+        type=TransactionType.expense,
+        description="Rent payment",
+        date=datetime.now(),
+        timestamp=int(datetime.now().timestamp()),
+        account_id=acc1.id,
+    )
+
+    tx = transaction_service.create_transaction(tx_in, user.id)
+
+    notification = db_session.query(Notification).filter(Notification.user_id == user.id).one()
+    assert notification.title == "Large transaction detected"
+    assert notification.type == "alert"
+    assert notification.category == "transaction"
+    assert notification.action_url == "/transactions"
+    assert notification.extra_metadata["transaction_id"] == tx.id
+    assert notification.extra_metadata["amount"] == 15000.0
+
 
 def test_create_transfer_without_destination_fails(transaction_service, setup_data):
     user, acc1, _, _ = setup_data
@@ -182,6 +205,29 @@ def test_update_transaction_amount_reverts_and_applies(transaction_service, setu
     updated_tx = transaction_service.update_transaction(tx.id, update_in, user.id)
     db_session.refresh(acc1)
     # Expected: (900 + 100) - 300 = 700
+    assert acc1.balance == 700.0
+
+
+def test_update_transaction_partial_amount_rebalances(transaction_service, setup_data, db_session):
+    user, acc1, _, cat1 = setup_data
+    tx_in = TransactionCreate(
+        id="tx7_partial",
+        amount=100.0,
+        type=TransactionType.expense,
+        description="Old Expense",
+        date=datetime.now(),
+        timestamp=int(datetime.now().timestamp()),
+        account_id=acc1.id,
+        category_id=cat1.id
+    )
+    tx = transaction_service.create_transaction(tx_in, user.id)
+
+    update_in = TransactionUpdate(amount=300.0)
+
+    updated_tx = transaction_service.update_transaction(tx.id, update_in, user.id)
+    db_session.refresh(acc1)
+    assert updated_tx.amount == 300.0
+    assert updated_tx.description == "Old Expense"
     assert acc1.balance == 700.0
 
 def test_delete_transaction(transaction_service, setup_data, db_session):
@@ -349,4 +395,78 @@ def test_get_transaction_summary(transaction_service, setup_data, db_session):
     
     assert len(expense_entries) == 1
     assert expense_entries[0]["total"] == 300.0  # 200 + 100
+
+
+
+def test_summary_cache_invalidates_after_transaction_write(transaction_service, setup_data, cache_store):
+    user, acc1, _, _ = setup_data
+    transaction_service.create_transaction(
+        TransactionCreate(
+            id="tx_cache_sum_1",
+            amount=500.0,
+            type=TransactionType.income,
+            description="Salary",
+            date=datetime(2025, 1, 15),
+            timestamp=1,
+            account_id=acc1.id,
+        ),
+        user.id,
+    )
+
+    cached_summary = transaction_service.get_transaction_summary(user.id, month=1, year=2025)
+    assert cache_store["dashboard:user1:2025:1"] == cached_summary
+
+    transaction_service.create_transaction(
+        TransactionCreate(
+            id="tx_cache_sum_2",
+            amount=150.0,
+            type=TransactionType.expense,
+            description="Groceries",
+            date=datetime(2025, 1, 20),
+            timestamp=2,
+            account_id=acc1.id,
+        ),
+        user.id,
+    )
+
+    refreshed_summary = transaction_service.get_transaction_summary(user.id, month=1, year=2025)
+    expense_entries = [item for item in refreshed_summary if item["type"] == "expense"]
+    assert expense_entries[0]["total"] == 150.0
+
+
+
+def test_monthly_history_uses_cached_value(transaction_service, setup_data, db_session, cache_store):
+    user, acc1, _, _ = setup_data
+    transaction_service.create_transaction(
+        TransactionCreate(
+            id="tx_cache_history_1",
+            amount=300.0,
+            type=TransactionType.income,
+            description="Consulting",
+            date=datetime(2025, 10, 10),
+            timestamp=1,
+            account_id=acc1.id,
+        ),
+        user.id,
+    )
+
+    first_history = transaction_service.get_monthly_history(user.id, months=3, end_month=12, end_year=2025)
+
+    db_session.add(
+        Transaction(
+            id="tx_cache_history_2",
+            amount=125.0,
+            type=TransactionType.expense,
+            description="Direct insert",
+            date=datetime(2025, 10, 12),
+            timestamp=2,
+            owner_id=user.id,
+            account_id=acc1.id,
+        )
+    )
+    db_session.commit()
+
+    cached_history = transaction_service.get_monthly_history(user.id, months=3, end_month=12, end_year=2025)
+    assert cached_history == first_history
+    assert cache_store["dashboard:user1:2025:12:history:3"] == first_history
 
