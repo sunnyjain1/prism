@@ -67,18 +67,28 @@ class AuthService:
         return user
 
     def _issue_tokens(self, user: User, device_info: Optional[str] = None) -> dict:
+        from sqlalchemy import inspect as sa_inspect
         access_token = create_access_token(data={"sub": user.id})
         refresh_token, refresh_token_id, refresh_expires_at = create_refresh_token(data={"sub": user.id})
 
-        refresh_token_record = RefreshToken(
-            id=refresh_token_id,
-            user_id=user.id,
-            token_hash=hash_token(refresh_token),
-            device_info=device_info,
-            expires_at=self._to_db_datetime(refresh_expires_at),
-        )
-        self.db.add(refresh_token_record)
-        self.db.commit()
+        # Persist the refresh token only if the table exists (guards against missing migrations).
+        try:
+            inspector = sa_inspect(self.db.bind)
+            if "refresh_tokens" in inspector.get_table_names():
+                refresh_token_record = RefreshToken(
+                    id=refresh_token_id,
+                    user_id=user.id,
+                    token_hash=hash_token(refresh_token),
+                    device_info=device_info,
+                    expires_at=self._to_db_datetime(refresh_expires_at),
+                )
+                self.db.add(refresh_token_record)
+                self.db.commit()
+            else:
+                logger.warning("refresh_tokens table not found — skipping token persistence. Run migrations.")
+        except Exception:
+            logger.exception("Failed to persist refresh token — proceeding without it")
+            self.db.rollback()
 
         return {
             "access_token": access_token,
