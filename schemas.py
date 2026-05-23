@@ -171,6 +171,15 @@ class Transaction(TransactionBase):
     categorization_confidence: Optional[float] = None
     model_config = ConfigDict(from_attributes=True)
 
+    # Response schema: be lenient with legacy data that has empty descriptions.
+    # Strict validation only applies on create/update (TransactionBase/TransactionCreate).
+    @field_validator("description", mode="before")
+    @classmethod
+    def validate_description(cls, value: str) -> str:  # type: ignore[override]
+        if not value or not str(value).strip():
+            return "(no description)"
+        return str(value).strip()
+
 class AccountBase(BaseModel):
     name: str
     type: AccountType
