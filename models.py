@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint, Boolean, JSON, func
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint, Boolean, JSON, Text, func
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -350,3 +350,132 @@ class EmailReportPreference(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "report_type", name="uq_email_report_pref_user_type"),
     )
+
+
+class SMSTransactionStatus(str, enum.Enum):
+    draft = "draft"
+    confirmed = "confirmed"
+    rejected = "rejected"
+    duplicate = "duplicate"
+
+
+class SMSTransaction(Base):
+    """Parsed SMS transaction — lives in review queue until confirmed."""
+    __tablename__ = "sms_transactions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+
+    # Raw SMS data
+    raw_body = Column(String, nullable=False)
+    sender = Column(String, nullable=True)
+    sms_timestamp = Column(DateTime, nullable=True)
+    device_id = Column(String, nullable=True)
+
+    # Parsed fields
+    amount = Column(Float, nullable=True)
+    transaction_type = Column(String, nullable=True)  # debit, credit, transfer, upi, atm, refund
+    merchant = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
+    masked_account = Column(String, nullable=True)  # last 4 digits e.g. "XX1234"
+    reference_number = Column(String, nullable=True)
+    available_balance = Column(Float, nullable=True)
+    upi_id = Column(String, nullable=True)
+    card_type = Column(String, nullable=True)  # credit_card, debit_card
+
+    # Matching
+    matched_account_id = Column(String, ForeignKey("accounts.id"), nullable=True)
+    matched_account = relationship("Account", foreign_keys=[matched_account_id])
+    suggested_category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    suggested_category = relationship("Category", foreign_keys=[suggested_category_id])
+
+    # Confidence & status
+    confidence = Column(Float, default=0.0)  # 0.0 to 1.0
+    status = Column(String, default=SMSTransactionStatus.draft.value, index=True)
+    confirmed_transaction_id = Column(String, ForeignKey("transactions.id"), nullable=True)
+
+    # Deduplication
+    dedup_hash = Column(String, nullable=True, index=True)
+
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedup_hash", name="uq_sms_txn_dedup"),
+    )
+
+
+class SMSParserRule(Base):
+    """Custom parser rules for specific bank SMS formats."""
+    __tablename__ = "sms_parser_rules"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    bank_name = Column(String, nullable=False)
+    sender_pattern = Column(String, nullable=False)  # regex for SMS sender
+    body_pattern = Column(String, nullable=False)  # regex with named groups
+    transaction_type = Column(String, nullable=False)
+    priority = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class DataSourceType(str, enum.Enum):
+    bank = "bank"
+    mutual_fund = "mutual_fund"
+    stock = "stock"
+    credit_bureau = "credit_bureau"
+    insurance = "insurance"
+    epf = "epf"
+    ppf = "ppf"
+    nps = "nps"
+    credit_card = "credit_card"
+
+
+class ConnectionStatus(str, enum.Enum):
+    pending = "pending"
+    active = "active"
+    failed = "failed"
+    expired = "expired"
+    revoked = "revoked"
+
+
+class DataSourceConnection(Base):
+    """User's connection to an external financial data source."""
+    __tablename__ = "data_source_connections"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    source_type = Column(String, nullable=False)  # DataSourceType
+    provider_name = Column(String, nullable=False)  # e.g., "CAMS", "KFintech", "CIBIL"
+    display_name = Column(String)  # User-friendly name
+    status = Column(String, default=ConnectionStatus.pending.value)
+    consent_id = Column(String)  # External consent reference
+    last_synced_at = Column(DateTime)
+    next_sync_at = Column(DateTime)
+    sync_frequency_hours = Column(Integer, default=24)
+    error_message = Column(String)
+    metadata_json = Column(Text, default="{}")  # Provider-specific metadata
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class AggregatedAsset(Base):
+    """Assets discovered from connected data sources."""
+    __tablename__ = "aggregated_assets"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    connection_id = Column(String, ForeignKey("data_source_connections.id"))
+    asset_type = Column(String, nullable=False)  # mutual_fund, stock, fd, ppf, epf, nps, insurance
+    name = Column(String, nullable=False)
+    identifier = Column(String)  # ISIN, folio number, policy number
+    institution = Column(String)  # AMC, broker, bank
+    current_value = Column(Float, default=0.0)
+    invested_value = Column(Float, default=0.0)
+    returns_absolute = Column(Float, default=0.0)
+    returns_percentage = Column(Float, default=0.0)
+    units = Column(Float)  # For MF/stocks
+    nav = Column(Float)  # Current NAV
+    last_updated = Column(DateTime)
+    metadata_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

@@ -1,12 +1,28 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import schemas
 from core.dependencies import get_current_user, get_db
 from services.notification_service import NotificationService
+from services.notification_intelligence_service import NotificationIntelligenceService
 from user_models import User
+
+
+class SmartInsight(BaseModel):
+    type: str
+    title: str
+    body: str
+    severity: str
+    category: str
+    metadata: dict = {}
+
+
+class SmartInsightsResponse(BaseModel):
+    insights: List[SmartInsight]
+    count: int
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 v1_router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -50,3 +66,15 @@ def mark_all_notifications_as_read(
 ):
     updated_count = NotificationService(db).mark_all_as_read(current_user.id)
     return {"updated_count": updated_count}
+
+
+@v1_router.get("/smart-insights", response_model=SmartInsightsResponse)
+@router.get("/smart-insights", response_model=SmartInsightsResponse)
+def get_smart_insights(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """AI-powered proactive financial insights: budget alerts, anomaly detection, savings milestones."""
+    service = NotificationIntelligenceService(db)
+    insights = service.generate_insights(str(current_user.id))
+    return SmartInsightsResponse(insights=insights, count=len(insights))

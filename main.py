@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 import database
 import models
 import user_models
-from api import accounts, auth, budgets, bulk_upload, categorize, categorization_rules, categories, health, health_score, investments, jobs, loans, net_worth, notifications, reports, search, subscriptions, sync, transactions
+from api import accounts, aggregation, auth, backup, budgets, bulk_upload, categorize, categorization_rules, categories, health, health_score, investments, jobs, loans, net_worth, notifications, reports, search, sms, streaks, subscriptions, sync, transactions
 from core.config import settings
 from core.exceptions import (
     global_exception_handler,
@@ -100,6 +100,10 @@ api_v1_router.include_router(investments.router)
 api_v1_router.include_router(net_worth.router)
 api_v1_router.include_router(health_score.router)
 api_v1_router.include_router(loans.v1_router)
+api_v1_router.include_router(sms.router)
+api_v1_router.include_router(backup.router)
+api_v1_router.include_router(streaks.router)
+api_v1_router.include_router(aggregation.router)
 app.include_router(api_v1_router)
 app.include_router(health.router)
 

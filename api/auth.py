@@ -20,6 +20,7 @@ def register(request: Request, user_in: schemas.UserCreate, db: Session = Depend
 
 
 @router.post("/login", response_model=schemas.Token)
+@router.post("/token", response_model=schemas.Token)
 @limiter.limit(settings.AUTH_RATE_LIMITS["login"])
 def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     service = AuthService(db)
