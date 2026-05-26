@@ -116,6 +116,7 @@ class SyncOrchestrator:
         attachment = gmail.get_latest_attachment(
             query=config.gmail_search_query,
             after_date=config.last_synced_at,
+            before_date=config.sync_end_date,
             filename_pattern=config.attachment_filename_pattern
         )
 
@@ -165,6 +166,7 @@ class SyncOrchestrator:
         attachments = gmail.get_all_attachments_since(
             query=config.gmail_search_query,
             after_date=since_date,
+            before_date=config.sync_end_date,
             filename_pattern=config.attachment_filename_pattern
         )
 

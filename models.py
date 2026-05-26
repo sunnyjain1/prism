@@ -190,6 +190,7 @@ class AccountSyncConfig(Base):
 
     # Historical sync: earliest date to sync from on first run
     sync_start_date = Column(DateTime, nullable=True)
+    sync_end_date = Column(Date, nullable=True)
 
     # Sync state
     last_synced_at = Column(DateTime, nullable=True)

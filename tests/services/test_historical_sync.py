@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import MagicMock, patch, call
 from typing import Dict, List
 import base64
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 
 # Mock the settings before importing GmailService
 with patch.dict('os.environ', {
@@ -152,6 +152,40 @@ def test_search_all_messages_with_after_date(mock_credentials, mock_build):
 
 @patch('services.gmail_service.build')
 @patch('services.gmail_service.Credentials')
+def test_search_messages_with_before_date(mock_credentials, mock_build):
+    """search_messages includes an inclusive 'before:' filter when before_date is provided."""
+    messages = [{"id": "msg1"}]
+    mock_api = MockGmailAPI(messages=messages, message_details={})
+    mock_build.return_value = mock_api.mock_service
+
+    gmail = GmailService(refresh_token="dummy")
+    before = date(2023, 1, 15)
+    gmail.search_messages(query="from:bank", before_date=before)
+
+    list_call_kwargs = mock_api.mock_service.users().messages().list.call_args
+    q_arg = list_call_kwargs[1].get("q") or list_call_kwargs[0][1]
+    assert "before:2023/01/16" in q_arg
+
+
+@patch('services.gmail_service.build')
+@patch('services.gmail_service.Credentials')
+def test_search_all_messages_with_before_date(mock_credentials, mock_build):
+    """search_all_messages includes an inclusive 'before:' filter when before_date is provided."""
+    messages = [{"id": "msg1"}]
+    mock_api = MockGmailAPI(messages=messages, message_details={})
+    mock_build.return_value = mock_api.mock_service
+
+    gmail = GmailService(refresh_token="dummy")
+    before = date(2023, 1, 15)
+    gmail.search_all_messages(query="from:bank", before_date=before)
+
+    list_call_kwargs = mock_api.mock_service.users().messages().list.call_args
+    q_arg = list_call_kwargs[1].get("q") or list_call_kwargs[0][1]
+    assert "before:2023/01/16" in q_arg
+
+
+@patch('services.gmail_service.build')
+@patch('services.gmail_service.Credentials')
 def test_search_all_messages_empty(mock_credentials, mock_build):
     """search_all_messages returns empty list when no messages match."""
     mock_api = MockGmailAPI(messages=[], message_details={})
@@ -261,6 +295,7 @@ def _make_mock_config(
     owner_id: str = "user-1",
     last_synced_at=None,
     sync_start_date=None,
+    sync_end_date=None,
     gmail_search_query: str = "from:bank",
     importer_key: str = "hdfc_pdf",
     attachment_filename_pattern=None
@@ -270,6 +305,7 @@ def _make_mock_config(
     config.owner_id = owner_id
     config.last_synced_at = last_synced_at
     config.sync_start_date = sync_start_date
+    config.sync_end_date = sync_end_date
     config.gmail_search_query = gmail_search_query
     config.importer_key = importer_key
     config.attachment_filename_pattern = attachment_filename_pattern
@@ -298,7 +334,8 @@ def test_sync_account_uses_historical_sync_on_first_run_with_start_date(
 
     config = _make_mock_config(
         last_synced_at=None,
-        sync_start_date=datetime(2022, 1, 1, tzinfo=timezone.utc)
+        sync_start_date=datetime(2022, 1, 1, tzinfo=timezone.utc),
+        sync_end_date=date(2022, 12, 31),
     )
 
     db = MagicMock()
@@ -306,7 +343,12 @@ def test_sync_account_uses_historical_sync_on_first_run_with_start_date(
     orchestrator.sync_account(config)
 
     # get_all_attachments_since should be called (historical path)
-    mock_gmail.get_all_attachments_since.assert_called_once()
+    mock_gmail.get_all_attachments_since.assert_called_once_with(
+        query=config.gmail_search_query,
+        after_date=config.sync_start_date,
+        before_date=config.sync_end_date,
+        filename_pattern=config.attachment_filename_pattern,
+    )
     # get_latest_attachment should NOT be called
     mock_gmail.get_latest_attachment.assert_not_called()
 
@@ -327,14 +369,23 @@ def test_sync_account_uses_incremental_sync_on_first_run_without_start_date(
     mock_gmail = mock_gmail_cls.return_value
     mock_gmail.get_latest_attachment.return_value = None
 
-    config = _make_mock_config(last_synced_at=None, sync_start_date=None)
+    config = _make_mock_config(
+        last_synced_at=None,
+        sync_start_date=None,
+        sync_end_date=date(2022, 12, 31),
+    )
 
     db = MagicMock()
     orchestrator = SyncOrchestrator(db)
     orchestrator.sync_account(config)
 
     # Incremental path
-    mock_gmail.get_latest_attachment.assert_called_once()
+    mock_gmail.get_latest_attachment.assert_called_once_with(
+        query=config.gmail_search_query,
+        after_date=config.last_synced_at,
+        before_date=config.sync_end_date,
+        filename_pattern=config.attachment_filename_pattern,
+    )
     mock_gmail.get_all_attachments_since.assert_not_called()
 
 

@@ -10,6 +10,8 @@ import database
 import models
 import user_models
 from api import accounts, aggregation, auth, backup, budgets, bulk_upload, categorize, categorization_rules, categories, health, health_score, investments, jobs, loans, net_worth, notifications, reports, search, sms, streaks, subscriptions, sync, transactions
+from api.account_aggregator import router as aa_router
+from api.mf_central import router as mf_central_router
 from core.config import settings
 from core.exceptions import (
     global_exception_handler,
@@ -104,6 +106,8 @@ api_v1_router.include_router(sms.router)
 api_v1_router.include_router(backup.router)
 api_v1_router.include_router(streaks.router)
 api_v1_router.include_router(aggregation.router)
+api_v1_router.include_router(mf_central_router)
+api_v1_router.include_router(aa_router)
 app.include_router(api_v1_router)
 app.include_router(health.router)
 

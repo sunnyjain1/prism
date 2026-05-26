@@ -5,7 +5,7 @@ import base64
 import re
 import logging
 from typing import Optional, List, Dict, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -40,8 +40,32 @@ class GmailService:
         )
         self.service = build("gmail", "v1", credentials=self.credentials)
 
+    def _apply_date_filters(
+        self,
+        query: str,
+        after_date: Optional[datetime] = None,
+        before_date: Optional[datetime] = None,
+    ) -> str:
+        if after_date:
+            # Gmail 'after' is exclusive of the date provided (date > after_date).
+            # To include messages from the same day as after_date, we search from one day before.
+            search_date = after_date - timedelta(days=1)
+            query = f"{query} after:{search_date.strftime('%Y/%m/%d')}"
+
+        if before_date:
+            # Gmail 'before' is exclusive of the date provided (date < before_date).
+            # To include messages from the same day as before_date, we search up to one day after.
+            before_adjusted = before_date + timedelta(days=1)
+            query = f"{query} before:{before_adjusted.strftime('%Y/%m/%d')}"
+
+        return query
+
     def search_messages(
-        self, query: str, after_date: Optional[datetime] = None, max_results: int = 5
+        self,
+        query: str,
+        after_date: Optional[datetime] = None,
+        before_date: Optional[datetime] = None,
+        max_results: int = 5,
     ) -> List[Dict]:
         """
         Search Gmail for messages matching the query.
@@ -49,18 +73,17 @@ class GmailService:
         Args:
             query: Gmail search query string
             after_date: Only return messages after this date
+            before_date: Only return messages on or before this date
             max_results: Maximum number of messages to return
 
         Returns:
             List of message metadata dicts with 'id' and 'threadId'
         """
-        if after_date:
-            from datetime import timedelta
-            # Gmail 'after' is exclusive of the date provided (date > after_date).
-            # To include messages from the same day as after_date, we search from one day before.
-            search_date = after_date - timedelta(days=1)
-            date_str = search_date.strftime("%Y/%m/%d")
-            query = f"{query} after:{date_str}"
+        query = self._apply_date_filters(
+            query,
+            after_date=after_date,
+            before_date=before_date,
+        )
 
         logger.info(f"Gmail search: {query}")
 
@@ -77,7 +100,10 @@ class GmailService:
             raise
 
     def search_all_messages(
-        self, query: str, after_date: Optional[datetime] = None
+        self,
+        query: str,
+        after_date: Optional[datetime] = None,
+        before_date: Optional[datetime] = None,
     ) -> List[Dict]:
         """
         Paginated Gmail search that returns **all** matching messages.
@@ -89,17 +115,16 @@ class GmailService:
         Args:
             query: Gmail search query string
             after_date: Only return messages after this date
+            before_date: Only return messages on or before this date
 
         Returns:
             List of message metadata dicts with 'id' and 'threadId'
         """
-        if after_date:
-            from datetime import timedelta
-            search_date = after_date - timedelta(days=1)
-            date_str = search_date.strftime("%Y/%m/%d")
-            full_query = f"{query} after:{date_str}"
-        else:
-            full_query = query
+        full_query = self._apply_date_filters(
+            query,
+            after_date=after_date,
+            before_date=before_date,
+        )
 
         logger.info(f"Gmail paginated search: {full_query}")
 
@@ -205,8 +230,11 @@ class GmailService:
         return attachments
 
     def get_latest_attachment(
-        self, query: str, after_date: Optional[datetime] = None,
-        filename_pattern: Optional[str] = None
+        self,
+        query: str,
+        after_date: Optional[datetime] = None,
+        before_date: Optional[datetime] = None,
+        filename_pattern: Optional[str] = None,
     ) -> Optional[Tuple[str, bytes]]:
         """
         Convenience method: search for messages and return the latest attachment matching the pattern.
@@ -215,7 +243,12 @@ class GmailService:
             (filename, content_bytes) or None
         """
         # Fetch up to 10 messages in case the most recent ones don't have the attachment
-        messages = self.search_messages(query, after_date=after_date, max_results=10)
+        messages = self.search_messages(
+            query,
+            after_date=after_date,
+            before_date=before_date,
+            max_results=10,
+        )
         if not messages:
             return None
 
@@ -231,8 +264,11 @@ class GmailService:
         return None
 
     def get_all_attachments_since(
-        self, query: str, after_date: Optional[datetime] = None,
-        filename_pattern: Optional[str] = None
+        self,
+        query: str,
+        after_date: Optional[datetime] = None,
+        before_date: Optional[datetime] = None,
+        filename_pattern: Optional[str] = None,
     ) -> List[Tuple[str, bytes]]:
         """
         Return **all** attachments found since ``after_date``.
@@ -243,13 +279,18 @@ class GmailService:
         Args:
             query: Gmail search query string
             after_date: Only consider messages after this date
+            before_date: Only consider messages on or before this date
             filename_pattern: Optional regex to filter attachments by filename
 
         Returns:
             List of (filename, content_bytes) tuples, oldest-first ordering
             is not guaranteed (Gmail returns newest-first by default).
         """
-        messages = self.search_all_messages(query, after_date=after_date)
+        messages = self.search_all_messages(
+            query,
+            after_date=after_date,
+            before_date=before_date,
+        )
         if not messages:
             return []
 

@@ -212,7 +212,9 @@ def create_or_update_sync_config(
             sync_interval_days=config_in.sync_interval_days,
             attachment_filename_pattern=config_in.attachment_filename_pattern,
             is_enabled=config_in.is_enabled,
-            pdf_password=config_in.pdf_password
+            pdf_password=config_in.pdf_password,
+            sync_start_date=config_in.sync_start_date,
+            sync_end_date=config_in.sync_end_date,
         )
         # Map has_pdf_password
         updated.has_pdf_password = bool(updated.encrypted_pdf_password)
@@ -227,7 +229,8 @@ def create_or_update_sync_config(
         attachment_filename_pattern=config_in.attachment_filename_pattern,
         is_enabled=config_in.is_enabled,
         pdf_password=config_in.pdf_password,
-        sync_start_date=config_in.sync_start_date
+        sync_start_date=config_in.sync_start_date,
+        sync_end_date=config_in.sync_end_date,
     )
     created.has_pdf_password = bool(created.encrypted_pdf_password)
     return created

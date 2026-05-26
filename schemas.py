@@ -723,6 +723,7 @@ class SyncConfigBase(BaseModel):
         description="Earliest date to sync from on the first run. "
                     "Set this to sync historical data (e.g. 2-3 years back)."
     )
+    sync_end_date: Optional[date] = None
 
     @field_validator("gmail_search_query", "importer_key")
     @classmethod
@@ -749,6 +750,7 @@ class SyncConfigUpdate(BaseModel):
     is_enabled: Optional[bool] = None
     pdf_password: Optional[str] = None
     sync_start_date: Optional[datetime] = None
+    sync_end_date: Optional[date] = None
 
     @field_validator("gmail_search_query", "importer_key", "attachment_filename_pattern", "pdf_password")
     @classmethod
