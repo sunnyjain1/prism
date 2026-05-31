@@ -1176,3 +1176,117 @@ class ReportJobResponse(BaseModel):
     download_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Credit Score & Report Schemas ---
+
+class CreditScoreResponse(BaseModel):
+    score: Optional[int] = None
+    provider: str = "cibil"
+    score_range_min: int = 300
+    score_range_max: int = 900
+    classification: str = "unknown"
+    report_date: Optional[date] = None
+    fetched_at: Optional[datetime] = None
+    has_report: bool = False
+
+
+class CreditAccountResponse(BaseModel):
+    id: str
+    account_type: str
+    institution: str
+    account_number_masked: Optional[str] = None
+    status: str
+    opened_date: Optional[date] = None
+    closed_date: Optional[date] = None
+    sanctioned_amount: float = 0.0
+    current_balance: float = 0.0
+    credit_limit: float = 0.0
+    emi_amount: float = 0.0
+    interest_rate: float = 0.0
+    days_past_due: int = 0
+    is_overdue: bool = False
+    last_payment_date: Optional[date] = None
+    ownership: str = "individual"
+    payment_history: Optional[List[Dict[str, Any]]] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreditInquiryResponse(BaseModel):
+    id: str
+    institution: str
+    inquiry_type: str
+    purpose: Optional[str] = None
+    inquiry_date: Optional[date] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreditReportSummary(BaseModel):
+    total_accounts: int = 0
+    active_accounts: int = 0
+    closed_accounts: int = 0
+    total_credit_limit: float = 0.0
+    total_current_balance: float = 0.0
+    credit_utilization_percent: float = 0.0
+    overdue_accounts: int = 0
+    total_emi_obligation: float = 0.0
+    oldest_account_age_months: Optional[int] = None
+    inquiries_last_6_months: int = 0
+
+
+class CreditReportResponse(BaseModel):
+    score: Optional[int] = None
+    provider: str
+    classification: str = "unknown"
+    report_date: Optional[date] = None
+    summary: CreditReportSummary
+    accounts: List[CreditAccountResponse] = []
+    inquiries: List[CreditInquiryResponse] = []
+    recommendations: List[str] = []
+    score_history: List[Dict[str, Any]] = []
+
+
+class CreditConsentRequest(BaseModel):
+    provider: str = "cibil"
+    pan: Optional[str] = None
+    consent_purpose: str = "credit_monitoring"
+
+
+class CreditConsentResponse(BaseModel):
+    consent_id: str
+    status: str
+    provider: str
+    redirect_url: Optional[str] = None
+
+
+class AccountDiscoveryRequest(BaseModel):
+    pan: Optional[str] = None
+    consent_id: Optional[str] = None
+
+
+class DiscoveredAccount(BaseModel):
+    source: str
+    account_type: str
+    institution: str
+    account_number_masked: Optional[str] = None
+    balance: Optional[float] = None
+    credit_limit: Optional[float] = None
+    already_linked: bool = False
+    suggested_name: str = ""
+
+
+class AccountDiscoveryResponse(BaseModel):
+    discovered_accounts: List[DiscoveredAccount] = []
+    source: str = "credit_report"
+    consent_active: bool = False
+
+
+class ImportAccountRequest(BaseModel):
+    account_type: str
+    institution: str
+    account_number_masked: Optional[str] = None
+    balance: float = 0.0
+    credit_limit: Optional[float] = None
+    name: Optional[str] = None

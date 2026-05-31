@@ -105,3 +105,12 @@ def revoke_consent(
     current_user: User = Depends(get_current_user),
 ):
     return _service.revoke_consent(consent_id)
+
+
+@router.post("/discover-accounts")
+def discover_accounts(
+    body: ConsentApproveRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Discover bank accounts linked to the user via Account Aggregator."""
+    return _service.discover_linked_accounts(current_user.id, body.consent_id)

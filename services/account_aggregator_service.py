@@ -198,3 +198,65 @@ class AccountAggregatorService:
             return {"success": False, "error": "Consent not found"}
         record["status"] = ConsentStatus.REVOKED
         return {"success": True, "message": "Consent revoked successfully"}
+
+    def discover_linked_accounts(self, user_id: str, consent_id: str) -> dict[str, Any]:
+        """
+        Discover bank/financial accounts linked to the user's AA identity.
+        In production, this queries the AA for all FIPs where the user has accounts.
+        Currently returns simulated data for development.
+        """
+        import random
+
+        record = self._consent_store.get(consent_id)
+        if not record:
+            return {"success": False, "error": "Consent not found", "accounts": []}
+        if record["user_id"] != user_id:
+            return {"success": False, "error": "Consent does not belong to user", "accounts": []}
+        if record["status"] != ConsentStatus.APPROVED:
+            return {"success": False, "error": f"Consent not approved (status: {record['status']})", "accounts": []}
+
+        # Simulated discovered accounts from AA
+        banks = ["HDFC Bank", "ICICI Bank", "SBI", "Axis Bank", "Kotak Mahindra"]
+        discovered = []
+
+        # Savings accounts (1-2)
+        for _ in range(random.randint(1, 2)):
+            bank = random.choice(banks)
+            discovered.append({
+                "source": "account_aggregator",
+                "account_type": "savings",
+                "institution": bank,
+                "account_number_masked": f"XXXX{random.randint(1000, 9999)}",
+                "balance": round(random.uniform(10000, 500000), 2),
+                "suggested_name": f"{bank} Savings",
+            })
+
+        # Current account (0-1)
+        if random.random() > 0.6:
+            bank = random.choice(banks)
+            discovered.append({
+                "source": "account_aggregator",
+                "account_type": "current",
+                "institution": bank,
+                "account_number_masked": f"XXXX{random.randint(1000, 9999)}",
+                "balance": round(random.uniform(50000, 1000000), 2),
+                "suggested_name": f"{bank} Current",
+            })
+
+        # FD (0-1)
+        if random.random() > 0.5:
+            bank = random.choice(banks)
+            discovered.append({
+                "source": "account_aggregator",
+                "account_type": "investment",
+                "institution": bank,
+                "account_number_masked": f"FD{random.randint(100000, 999999)}",
+                "balance": round(random.uniform(100000, 1000000), 2),
+                "suggested_name": f"{bank} Fixed Deposit",
+            })
+
+        return {
+            "success": True,
+            "accounts": discovered,
+            "message": f"Found {len(discovered)} account(s) via Account Aggregator.",
+        }

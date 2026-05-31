@@ -480,3 +480,68 @@ class AggregatedAsset(Base):
     last_updated = Column(DateTime)
     metadata_json = Column(Text, default="{}")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class CreditReport(Base):
+    """User's credit report fetched from credit bureaus."""
+    __tablename__ = "credit_reports"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    provider = Column(String, nullable=False)  # cibil, experian, crif
+    score = Column(Integer, nullable=True)
+    score_range_min = Column(Integer, default=300)
+    score_range_max = Column(Integer, default=900)
+    report_date = Column(Date, nullable=True)
+    fetched_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    status = Column(String, default="success")  # success, partial, failed
+    raw_data_json = Column(Text, default="{}")
+    consent_reference = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+
+    accounts = relationship("CreditAccount", back_populates="report", cascade="all, delete-orphan")
+    inquiries = relationship("CreditInquiry", back_populates="report", cascade="all, delete-orphan")
+
+
+class CreditAccount(Base):
+    """Individual credit account from a credit report."""
+    __tablename__ = "credit_accounts"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    report_id = Column(String, ForeignKey("credit_reports.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    account_type = Column(String, nullable=False)  # credit_card, personal_loan, home_loan, auto_loan, consumer_loan
+    institution = Column(String, nullable=False)
+    account_number_masked = Column(String, nullable=True)
+    status = Column(String, nullable=False)  # active, closed, written_off, settled
+    opened_date = Column(Date, nullable=True)
+    closed_date = Column(Date, nullable=True)
+    sanctioned_amount = Column(Float, default=0.0)
+    current_balance = Column(Float, default=0.0)
+    credit_limit = Column(Float, default=0.0)
+    emi_amount = Column(Float, default=0.0)
+    interest_rate = Column(Float, default=0.0)
+    payment_history = Column(JSON, nullable=True)  # Monthly payment statuses
+    days_past_due = Column(Integer, default=0)
+    is_overdue = Column(Boolean, default=False)
+    last_payment_date = Column(Date, nullable=True)
+    ownership = Column(String, default="individual")  # individual, joint, guarantor
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+
+    report = relationship("CreditReport", back_populates="accounts")
+
+
+class CreditInquiry(Base):
+    """Hard/soft inquiries on the credit report."""
+    __tablename__ = "credit_inquiries"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    report_id = Column(String, ForeignKey("credit_reports.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    institution = Column(String, nullable=False)
+    inquiry_type = Column(String, nullable=False)  # hard, soft
+    purpose = Column(String, nullable=True)  # credit_card, personal_loan, home_loan, etc.
+    inquiry_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+
+    report = relationship("CreditReport", back_populates="inquiries")
