@@ -8,12 +8,18 @@ from sqlalchemy.orm import Session
 from models import Category, CategorizationRule, MerchantCategoryMapping, Transaction
 from schemas import TransactionType
 from services.import_entity_service import ImportEntityService
+from services.import_profile_service import ImportProfileService
 
 logger = logging.getLogger(__name__)
 
 
 class SmartCategorizationService:
     AUTO_ASSIGN_CONFIDENCE = 0.7
+
+    def __init__(self) -> None:
+        # One ImportProfileService per user for the life of this instance, so a
+        # bulk categorization run reads the profile once rather than per row.
+        self._profile_services: dict[str, "ImportProfileService"] = {}
 
     MERCHANT_PATTERNS = {
         r"swiggy|swigy": "Swiggy",
@@ -81,6 +87,15 @@ class SmartCategorizationService:
         db: Session,
         color: Optional[str] = None,
     ) -> Optional[str]:
+        # Prefer the user's own name for this concept ("Food" over "Food & Dining")
+        # so auto entries join their existing categories instead of forking them.
+        try:
+            category_name = self._get_profile_service(user_id, db).map_to_user_category(
+                category_name, tx_type
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Category vocabulary mapping failed for user %s: %s", user_id, exc)
+
         entity_service = ImportEntityService(db, user_id)
         return entity_service.get_or_create_category(category_name, tx_type, color=color)
 
@@ -149,6 +164,43 @@ class SmartCategorizationService:
                 return rule.category_id
 
         return None
+
+    def _get_profile_service(self, user_id: str, db: Session) -> "ImportProfileService":
+        service = self._profile_services.get(user_id)
+        if service is None:
+            service = ImportProfileService(db, user_id)
+            self._profile_services[user_id] = service
+        return service
+
+    def _match_import_profile(
+        self,
+        user_id: str,
+        description: str,
+        merchant: str,
+        tx_type: TransactionType,
+        db: Session,
+    ) -> tuple[Optional[str], float]:
+        """
+        Match against the user's own note→category rules.
+
+        These come from their historical entries (a Money Manager export or their
+        existing Prism history), so they capture personal categories the generic
+        keyword rules know nothing about — e.g. "Snacks" → "Sukoon".
+
+        Matched against the raw description rather than the normalized merchant:
+        normalize_merchant() strips exactly the words these rules key on.
+        """
+        try:
+            service = self._get_profile_service(user_id, db)
+            for text in (description, merchant):
+                if not text:
+                    continue
+                category_id, confidence = service.resolve_category_id(text, tx_type)
+                if category_id:
+                    return category_id, confidence
+        except Exception as exc:  # pragma: no cover - profile must never block ingestion
+            logger.warning("Import profile categorization failed for user %s: %s", user_id, exc)
+        return None, 0.0
 
     def _get_history_match(
         self,
@@ -284,6 +336,15 @@ class SmartCategorizationService:
                 "category_id": category_id,
                 "confidence": 0.95,
                 "method": "pattern_match",
+                "normalized_merchant": normalized_merchant or None,
+            }
+
+        category_id, confidence = self._match_import_profile(user_id, description, merchant, tx_type, db)
+        if category_id:
+            return {
+                "category_id": category_id,
+                "confidence": confidence,
+                "method": "import_profile",
                 "normalized_merchant": normalized_merchant or None,
             }
 

@@ -373,6 +373,8 @@ class NetWorthSummary(BaseModel):
     liability_breakdown: Dict[str, float] = Field(default_factory=dict)
     debt_to_asset_ratio: float
     snapshot_date: date
+    connected_institutions_count: int = 0
+    last_sync_at: Optional[datetime] = None
 
 
 class AssetAllocationItem(BaseModel):

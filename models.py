@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum, BigInteger, UniqueConstraint, Boolean, JSON, Text, func
 from sqlalchemy.orm import relationship
+from core.encryption import EncryptedString
 from database import Base
 import datetime
 from datetime import timezone
@@ -367,8 +368,8 @@ class SMSTransaction(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
 
-    # Raw SMS data
-    raw_body = Column(String, nullable=False)
+    # Raw SMS data — encrypted at rest (contains account/amount PII); dedup uses dedup_hash, not this.
+    raw_body = Column(EncryptedString, nullable=False)
     sender = Column(String, nullable=True)
     sms_timestamp = Column(DateTime, nullable=True)
     device_id = Column(String, nullable=True)
@@ -378,10 +379,10 @@ class SMSTransaction(Base):
     transaction_type = Column(String, nullable=True)  # debit, credit, transfer, upi, atm, refund
     merchant = Column(String, nullable=True)
     bank_name = Column(String, nullable=True)
-    masked_account = Column(String, nullable=True)  # last 4 digits e.g. "XX1234"
+    masked_account = Column(EncryptedString, nullable=True)  # last 4 digits e.g. "XX1234"
     reference_number = Column(String, nullable=True)
     available_balance = Column(Float, nullable=True)
-    upi_id = Column(String, nullable=True)
+    upi_id = Column(EncryptedString, nullable=True)
     card_type = Column(String, nullable=True)  # credit_card, debit_card
 
     # Matching
@@ -422,6 +423,7 @@ class SMSParserRule(Base):
 
 class DataSourceType(str, enum.Enum):
     bank = "bank"
+    bank_account = "bank_account"  # alias used by discovery orchestrator
     mutual_fund = "mutual_fund"
     stock = "stock"
     credit_bureau = "credit_bureau"
@@ -435,7 +437,9 @@ class DataSourceType(str, enum.Enum):
 class ConnectionStatus(str, enum.Enum):
     pending = "pending"
     active = "active"
+    syncing = "syncing"
     failed = "failed"
+    error = "error"
     expired = "expired"
     revoked = "revoked"
 
@@ -461,22 +465,25 @@ class DataSourceConnection(Base):
 
 
 class AggregatedAsset(Base):
-    """Assets discovered from connected data sources."""
+    """Assets discovered from connected data sources or added manually."""
     __tablename__ = "aggregated_assets"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    connection_id = Column(String, ForeignKey("data_source_connections.id"))
-    asset_type = Column(String, nullable=False)  # mutual_fund, stock, fd, ppf, epf, nps, insurance
+    connection_id = Column(String, ForeignKey("data_source_connections.id"), nullable=True)
+    asset_type = Column(String, nullable=False)  # mutual_fund, stock, etf, fd, ppf, epf, nps, gold, silver, real_estate
+    source_type = Column(String, default="auto")  # 'auto' = discovered | 'manual' = user-entered
     name = Column(String, nullable=False)
-    identifier = Column(String)  # ISIN, folio number, policy number
+    identifier = Column(EncryptedString)  # ISIN, folio number, policy number — encrypted at rest
     institution = Column(String)  # AMC, broker, bank
     current_value = Column(Float, default=0.0)
     invested_value = Column(Float, default=0.0)
     returns_absolute = Column(Float, default=0.0)
     returns_percentage = Column(Float, default=0.0)
-    units = Column(Float)  # For MF/stocks
+    units = Column(Float)  # For MF/stocks/gold/silver
+    quantity_unit = Column(String)  # 'grams' for gold/silver
     nav = Column(Float)  # Current NAV
+    ownership_percent = Column(Float, default=100.0)  # For real estate
     last_updated = Column(DateTime)
     metadata_json = Column(Text, default="{}")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -512,7 +519,7 @@ class CreditAccount(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     account_type = Column(String, nullable=False)  # credit_card, personal_loan, home_loan, auto_loan, consumer_loan
     institution = Column(String, nullable=False)
-    account_number_masked = Column(String, nullable=True)
+    account_number_masked = Column(EncryptedString, nullable=True)
     status = Column(String, nullable=False)  # active, closed, written_off, settled
     opened_date = Column(Date, nullable=True)
     closed_date = Column(Date, nullable=True)
@@ -545,3 +552,84 @@ class CreditInquiry(Base):
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
 
     report = relationship("CreditReport", back_populates="inquiries")
+
+
+class DiscoverySession(Base):
+    """Tracks a multi-phase financial discovery run for a user."""
+    __tablename__ = "discovery_sessions"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    status = Column(String, nullable=False, default="queued")
+    # queued | running | completed | partial_success | failed
+    job_id = Column(String, nullable=True)  # maps to JobQueue.job_id
+    # JSON: { phase_id: {status, started_at, completed_at, error, requires_manual_setup} }
+    phases_json = Column(Text, default="{}")
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+
+
+class DiscoveryAuditLog(Base):
+    """Immutable audit trail for discovery and sync events."""
+    __tablename__ = "discovery_audit_logs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    event_type = Column(String, nullable=False, index=True)
+    # discovery_started | discovery_completed | discovery_failed
+    # sync_started | sync_completed | sync_failed
+    # asset_added_manually | connection_revoked
+    entity_type = Column(String, nullable=True)   # discovery_session | data_source_connection | aggregated_asset
+    entity_id = Column(String, nullable=True)
+    metadata_json = Column(Text, default="{}")
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+
+
+class UserImportProfile(Base):
+    """
+    Per-user import configuration that persists note→category rules, account type hints,
+    skip rules, and category remappings across all future bulk imports.
+    One row per user (upserted on save).
+    """
+    __tablename__ = "user_import_profiles"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    # JSON config — see services/import_profile_service.py for schema docs
+    config = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.datetime.now(timezone.utc),
+        onupdate=lambda: datetime.datetime.now(timezone.utc),
+    )
+
+
+class AAConsent(Base):
+    """
+    An Account Aggregator consent artifact for bank-account discovery.
+
+    Persists the consent lifecycle so the user can be redirected to the AA hosted
+    page, polled for approval, and have their FI data fetched on a real session.
+    PAN/DOB are NEVER stored here — per RBI/ReBIT they are discovery-only hints.
+    """
+    __tablename__ = "aa_consents"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    provider = Column(String, nullable=False)          # setu | anumati
+    consent_handle = Column(String, index=True)        # provider handle (creation time)
+    consent_id = Column(String, index=True)            # signed consent id (once approved)
+    status = Column(String, nullable=False, default="pending")  # AAConsentStatus value
+    fi_types_json = Column(Text, default="[]")         # requested FI types
+    consent_url = Column(String)                        # hosted AA approval page
+    data_session_id = Column(String)                    # last data session id
+    last_fetched_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.datetime.now(timezone.utc),
+        onupdate=lambda: datetime.datetime.now(timezone.utc),
+    )

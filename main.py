@@ -9,10 +9,11 @@ from slowapi.errors import RateLimitExceeded
 import database
 import models
 import user_models
-from api import accounts, aggregation, auth, backup, budgets, bulk_upload, categorize, categorization_rules, categories, health, health_score, investments, jobs, loans, net_worth, notifications, reports, search, sms, streaks, subscriptions, sync, transactions
+from api import accounts, aggregation, auth, backup, budgets, bulk_upload, categorize, categorization_rules, categories, discovery, health, health_score, investments, jobs, loans, net_worth, notifications, reports, search, sms, streaks, subscriptions, sync, transactions
 from api.account_aggregator import router as aa_router
 from api.mf_central import router as mf_central_router
 from api.credit_score import router as credit_score_router
+from api.import_profile import router as import_profile_router
 from core.config import settings
 from core.exceptions import (
     global_exception_handler,
@@ -90,6 +91,7 @@ api_v1_router.include_router(transactions.v1_router)
 api_v1_router.include_router(accounts.router)
 api_v1_router.include_router(categories.router)
 api_v1_router.include_router(bulk_upload.router)
+api_v1_router.include_router(import_profile_router)
 api_v1_router.include_router(sync.router)
 api_v1_router.include_router(categorization_rules.router)
 api_v1_router.include_router(categorize.router)
@@ -107,6 +109,7 @@ api_v1_router.include_router(sms.router)
 api_v1_router.include_router(backup.router)
 api_v1_router.include_router(streaks.router)
 api_v1_router.include_router(aggregation.router)
+api_v1_router.include_router(discovery.router)
 api_v1_router.include_router(mf_central_router)
 api_v1_router.include_router(aa_router)
 api_v1_router.include_router(credit_score_router)
@@ -119,6 +122,7 @@ app.include_router(transactions.router, prefix="/api", include_in_schema=False)
 app.include_router(accounts.router, prefix="/api", include_in_schema=False)
 app.include_router(categories.router, prefix="/api", include_in_schema=False)
 app.include_router(bulk_upload.router, prefix="/api", include_in_schema=False)
+app.include_router(import_profile_router, prefix="/api", include_in_schema=False)
 app.include_router(sync.router, prefix="/api", include_in_schema=False)
 app.include_router(categorization_rules.router, prefix="/api", include_in_schema=False)
 app.include_router(categorize.router, prefix="/api", include_in_schema=False)
@@ -131,6 +135,7 @@ app.include_router(investments.router, prefix="/api", include_in_schema=False)
 app.include_router(net_worth.router, prefix="/api", include_in_schema=False)
 app.include_router(health_score.router, prefix="/api", include_in_schema=False)
 app.include_router(loans.router, prefix="/api", include_in_schema=False)
+app.include_router(aa_router, prefix="/api", include_in_schema=False)
 
 
 @app.get("/")
