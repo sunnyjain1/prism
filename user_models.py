@@ -6,6 +6,7 @@ from datetime import timezone
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
 from sqlalchemy.orm import relationship
 
+from core.encryption import EncryptedString
 from database import Base
 
 
@@ -21,7 +22,11 @@ class User(Base):
     id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    full_name = Column(String, nullable=True)
+    full_name = Column(EncryptedString, nullable=True)
+    # Mobile number — the strong identifier for Account Aggregator discovery.
+    # Captured during the "link bank accounts" flow and reused on later syncs.
+    # Encrypted at rest (identifier PII); never used in SQL filters.
+    phone_number = Column(EncryptedString, nullable=True)
     role = Column(String, default=UserRole.EDITOR)
     is_active = Column(Boolean, default=True)
 

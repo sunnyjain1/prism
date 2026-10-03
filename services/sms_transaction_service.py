@@ -1,6 +1,7 @@
 """
 SMS Transaction Service — ingestion, account matching, confirmation workflow.
 """
+import logging
 from typing import List, Optional
 from datetime import datetime
 from uuid import uuid4
@@ -10,6 +11,8 @@ from sqlalchemy import and_, desc
 from models import SMSTransaction, SMSTransactionStatus, Account, Transaction, TransactionType
 from services.sms_parser import parse_sms, compute_dedup_hash, normalize_merchant, ParsedSMS
 from services.smart_categorization_service import SmartCategorizationService
+
+logger = logging.getLogger(__name__)
 
 
 class SMSTransactionService:
@@ -62,7 +65,7 @@ class SMSTransactionService:
             matched_account_id = self._match_account(user_id, parsed)
 
             # Suggest category
-            suggested_category_id = self._suggest_category(user_id, parsed)
+            suggested_category_id = self._suggest_category(user_id, parsed, body)
 
             # Normalize merchant
             merchant = normalize_merchant(parsed.merchant) or parsed.merchant
@@ -257,21 +260,29 @@ class SMSTransactionService:
         # Only return if we have reasonable confidence
         return best_match if best_score >= 2 else None
 
-    def _suggest_category(self, user_id: str, parsed: ParsedSMS) -> Optional[str]:
+    def _suggest_category(
+        self, user_id: str, parsed: ParsedSMS, raw_body: str = ""
+    ) -> Optional[str]:
         """Suggest category based on merchant/description."""
-        if not parsed.merchant:
+        # Fall back to the raw SMS text: the user's own note rules often match
+        # words in the narration that the merchant parser drops.
+        description = parsed.merchant or raw_body or ""
+        if not description:
             return None
         try:
-            service = SmartCategorizationService(self.db)
+            service = SmartCategorizationService()
             suggestion = service.categorize_transaction(
                 user_id=user_id,
-                description=parsed.merchant,
-                amount=parsed.amount,
+                description=description,
+                merchant=parsed.merchant or "",
+                amount=parsed.amount or 0,
+                type=self._map_transaction_type(parsed.transaction_type),
+                db=self.db,
             )
             if suggestion and suggestion.get("confidence", 0) > 0.5:
                 return suggestion.get("category_id")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("SMS category suggestion failed for user %s: %s", user_id, exc)
         return None
 
     def _map_transaction_type(self, sms_type: Optional[str]) -> str:

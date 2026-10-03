@@ -36,6 +36,11 @@ class Settings:
         self.ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
         self.REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
+        # PII-at-rest encryption. Always on (no user toggle). A dedicated key is preferred
+        # so PII ciphertext does not share a secret with JWT signing; falls back to deriving
+        # from SECRET_KEY when unset so dev/test work with no extra configuration.
+        self.PII_ENCRYPTION_KEY: str = os.environ.get("PII_ENCRYPTION_KEY", "").strip() or self.SECRET_KEY
+
         # CORS
         raw_origins = os.environ.get(
             "ALLOWED_ORIGINS",
@@ -77,6 +82,29 @@ class Settings:
         self.CACHE_TTL_DASHBOARD: int = int(os.getenv("CACHE_TTL_DASHBOARD", "300"))
         self.CACHE_TTL_SUMMARY: int = int(os.getenv("CACHE_TTL_SUMMARY", "600"))
         self.SENTRY_DSN: str = os.getenv("SENTRY_DSN", "").strip()
+
+        # Account Aggregator (AA / India Stack)
+        # Provider-agnostic: AA_PROVIDER selects the implementation (setu | anumati).
+        # Defaults point at the Setu sandbox so the flow works end-to-end out of the box.
+        self.AA_PROVIDER: str = os.getenv("AA_PROVIDER", "setu").strip().lower()
+        self.AA_FIU_ID: str = os.getenv("AA_FIU_ID", "").strip()
+        self.SETU_AA_BASE_URL: str = os.getenv(
+            "SETU_AA_BASE_URL", "https://fiu-sandbox.setu.co"
+        ).rstrip("/")
+        self.SETU_AA_CLIENT_ID: str = os.getenv("SETU_AA_CLIENT_ID", "")
+        self.SETU_AA_CLIENT_SECRET: str = os.getenv("SETU_AA_CLIENT_SECRET", "")
+        self.SETU_AA_PRODUCT_INSTANCE_ID: str = os.getenv("SETU_AA_PRODUCT_INSTANCE_ID", "")
+        # Where the AA hosted-consent page redirects the user back to (app deep link / web bridge).
+        self.AA_REDIRECT_URL: str = os.getenv("AA_REDIRECT_URL", "http://localhost:5173/aa/callback")
+        self.AA_WEBHOOK_SECRET: str = os.getenv("AA_WEBHOOK_SECRET", "")
+        self.AA_CONSENT_EXPIRY_DAYS: int = int(os.getenv("AA_CONSENT_EXPIRY_DAYS", "365"))
+        self.AA_FETCH_FROM_MONTHS: int = int(os.getenv("AA_FETCH_FROM_MONTHS", "12"))
+        self.AA_HTTP_TIMEOUT: int = int(os.getenv("AA_HTTP_TIMEOUT", "30"))
+        # When true (default in sandbox), the consent status endpoint is polled rather than
+        # relying on the AA data-ready webhook.
+        self.AA_SANDBOX_MODE: bool = self._get_bool(
+            "AA_SANDBOX_MODE", default=self.ENVIRONMENT != "production"
+        )
 
         self.validate()
 

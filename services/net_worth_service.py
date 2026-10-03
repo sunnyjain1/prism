@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from models import Account, Investment, Loan, NetWorthSnapshot
+from models import Account, AggregatedAsset, DataSourceConnection, Investment, Loan, NetWorthSnapshot
 
 ASSET_ACCOUNT_TYPES = {"checking", "current", "savings", "investment", "cash"}
 LIABILITY_ACCOUNT_TYPES = {"credit", "credit_card", "loan"}
@@ -21,6 +21,22 @@ LIABILITY_BREAKDOWN_MAP = {
     "credit": "credit_cards",
     "credit_card": "credit_cards",
     "loan": "loans",
+}
+
+# Maps AggregatedAsset.asset_type → breakdown key in net worth
+AGGREGATED_ASSET_BREAKDOWN_MAP = {
+    "mutual_fund": "mutual_funds",
+    "stock": "stocks",
+    "etf": "etf",
+    "fd": "fixed_deposits",
+    "ppf": "ppf",
+    "epf": "epf",
+    "nps": "nps",
+    "gold": "gold",
+    "silver": "silver",
+    "real_estate": "real_estate",
+    "insurance": "insurance",
+    "custom": "other_assets",
 }
 
 
@@ -59,6 +75,12 @@ def calculate_current_net_worth(user_id: str, db: Session) -> dict[str, Any]:
         Loan.user_id == user_id,
         Loan.is_active.is_(True),
     ).all()
+    aggregated_assets = db.query(AggregatedAsset).filter(
+        AggregatedAsset.user_id == user_id,
+    ).all()
+    connections = db.query(DataSourceConnection).filter(
+        DataSourceConnection.user_id == user_id,
+    ).all()
 
     asset_breakdown: defaultdict[str, float] = defaultdict(float)
     liability_breakdown: defaultdict[str, float] = defaultdict(float)
@@ -75,6 +97,10 @@ def calculate_current_net_worth(user_id: str, db: Session) -> dict[str, Any]:
             total_liabilities += liability_value
             liability_breakdown[LIABILITY_BREAKDOWN_MAP.get(account.type, account.type)] += liability_value
 
+    # Collect identifiers of investments already tracked to avoid double-counting
+    # AggregatedAsset rows that represent the same holding.
+    investment_identifiers = {inv.symbol for inv in investments if inv.symbol}
+
     for investment in investments:
         current_value = _resolved_investment_value(investment)
         total_assets += current_value
@@ -86,6 +112,22 @@ def calculate_current_net_worth(user_id: str, db: Session) -> dict[str, Any]:
         liability_value = _to_float(loan.outstanding_amount)
         total_liabilities += liability_value
         liability_breakdown["loans"] += liability_value
+
+    # Include AggregatedAssets, skipping any that are already represented
+    # by an Investment with the same identifier (ISIN / folio / symbol).
+    for asset in aggregated_assets:
+        if asset.identifier and asset.identifier in investment_identifiers:
+            continue
+        value = _to_float(asset.current_value)
+        # Apply ownership percentage for real estate
+        if asset.asset_type == "real_estate" and asset.ownership_percent is not None:
+            value = value * (asset.ownership_percent / 100.0)
+        total_assets += value
+        key = AGGREGATED_ASSET_BREAKDOWN_MAP.get(asset.asset_type, asset.asset_type)
+        asset_breakdown[key] += value
+
+    connected_institutions_count = len(connections)
+    last_sync_at = max((c.last_synced_at for c in connections if c.last_synced_at), default=None)
 
     asset_breakdown_dict = dict(sorted(asset_breakdown.items(), key=lambda item: item[0]))
     liability_breakdown_dict = dict(sorted(liability_breakdown.items(), key=lambda item: item[0]))
@@ -104,6 +146,8 @@ def calculate_current_net_worth(user_id: str, db: Session) -> dict[str, Any]:
         "liability_breakdown": liability_breakdown_dict,
         "debt_to_asset_ratio": (total_liabilities / total_assets) if total_assets else 0.0,
         "snapshot_date": date.today(),
+        "connected_institutions_count": connected_institutions_count,
+        "last_sync_at": last_sync_at,
     }
 
 

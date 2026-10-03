@@ -12,6 +12,7 @@ from services.transaction_service import TransactionService
 from services.deduplication_service import DeduplicationService
 from services.import_entity_service import ImportEntityService
 from services.category_inference_service import CategoryInferenceService
+from services.import_profile_service import ImportProfileService
 
 # Import all bank importers
 from .importers.bank_importers import (
@@ -172,6 +173,14 @@ class BulkUploadService:
                 "transactions": preview_transactions,
             }
         
+        # Apply user import profile (note rules, account type hints, skip rules)
+        profile_svc = ImportProfileService(self.db, owner_id)
+        profile_config = profile_svc.get_profile()
+        if profile_config:
+            final_transactions = profile_svc.apply_to_transactions(
+                final_transactions, profile_config
+            )
+
         # Create import entity service for handling missing categories/accounts
         entity_service = ImportEntityService(self.db, owner_id)
         # Create category inference service for auto-categorization
@@ -209,9 +218,18 @@ class BulkUploadService:
             # Handle account from import metadata if present
             # (This will be set by importers that extract account information)
             if hasattr(tx, '_import_account') and tx._import_account and not target_account_id:
+                from models import AccountType as AT
+                raw_hint = getattr(tx, '_import_account_type', None)
+                account_type_hint = None
+                if raw_hint:
+                    try:
+                        account_type_hint = AT(raw_hint)
+                    except ValueError:
+                        pass
                 account_id = entity_service.get_or_create_account(
                     tx._import_account,
-                    currency=currency
+                    currency=currency,
+                    account_type=account_type_hint,
                 )
                 if account_id:
                     tx.account_id = account_id

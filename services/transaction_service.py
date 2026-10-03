@@ -7,10 +7,11 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from models import Transaction, Account, TransactionType
+from models import Category, Transaction, Account, TransactionType
 from repositories.transaction_repository import TransactionRepository
 from schemas import TransactionCreate, TransactionUpdate
 from services.cache_service import cache
+from services.import_profile_service import ImportProfileService
 from services.notification_service import NotificationService
 from services.search_service import SearchService
 from services.smart_categorization_service import SmartCategorizationService
@@ -104,6 +105,31 @@ class TransactionService:
 
         if suggestion.get("category_id") and suggestion.get("confidence", 0) >= SmartCategorizationService.AUTO_ASSIGN_CONFIDENCE:
             tx_data["category_id"] = suggestion["category_id"]
+
+    def _learn_note_rule(self, transaction: Transaction, owner_id: str) -> None:
+        """
+        Feed a manual recategorization back into the user's import profile.
+
+        This closes the loop: correcting one auto-created entry teaches every
+        future auto entry — SMS, AA, Gmail, bulk import — the same mapping.
+        Never let a learning failure break the update itself.
+        """
+        if not transaction.category_id or not transaction.description:
+            return
+        try:
+            category = self.db.query(Category).filter(Category.id == transaction.category_id).first()
+            if not category or category.type not in (
+                TransactionType.expense.value,
+                TransactionType.income.value,
+            ):
+                return
+            ImportProfileService(self.db, owner_id).learn_note_rule(
+                description=transaction.description,
+                category_name=category.name,
+                tx_type=TransactionType(category.type),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not learn note rule for user %s: %s", owner_id, exc)
 
     def create_transaction(self, transaction_in: TransactionCreate, owner_id: str) -> Transaction:
         tx_data = transaction_in.model_dump()
@@ -290,6 +316,7 @@ class TransactionService:
                     category_id=existing.category_id,
                     db=self.db,
                 )
+                self._learn_note_rule(existing, owner_id)
 
         if should_rebalance:
             self._update_balances(existing, owner_id)
