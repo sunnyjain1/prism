@@ -11,7 +11,7 @@ import json
 import hashlib
 import base64
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import uuid4
 
@@ -62,6 +62,15 @@ def decrypt_data(envelope: dict, password: str) -> bytes:
     key = derive_key(password, salt)
     aesgcm = AESGCM(key)
     return aesgcm.decrypt(nonce, ciphertext, None)
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Backups serialize datetimes with ``str()``; turn them back into objects."""
+    return datetime.fromisoformat(value) if value else None
+
+
+def _parse_date(value: Optional[str]) -> Optional[date]:
+    return date.fromisoformat(value[:10]) if value else None
 
 
 class BackupService:
@@ -156,10 +165,10 @@ class BackupService:
         return {
             "accounts": [
                 {
-                    "id": a.id, "name": a.name, "account_type": a.account_type,
-                    "balance": a.balance, "institution": a.institution,
-                    "account_number": a.account_number, "currency": a.currency,
-                    "color": a.color,
+                    "id": a.id, "name": a.name, "type": a.type,
+                    "balance": a.balance, "currency": a.currency,
+                    "billing_cycle_day": a.billing_cycle_day,
+                    "credit_limit": a.credit_limit,
                 }
                 for a in accounts
             ],
@@ -174,39 +183,47 @@ class BackupService:
                 for t in transactions
             ],
             "categories": [
-                {
-                    "id": c.id, "name": c.name, "type": c.type,
-                    "color": c.color, "icon": c.icon,
-                }
+                {"id": c.id, "name": c.name, "type": c.type, "color": c.color}
                 for c in categories
             ],
             "budgets": [
                 {
                     "id": b.id, "name": b.name, "amount": b.amount,
                     "period": b.period, "category_id": b.category_id,
-                    "start_date": b.start_date, "end_date": b.end_date,
+                    "start_date": b.start_date, "is_active": b.is_active,
                 }
                 for b in budgets
             ],
             "exported_at": datetime.utcnow().isoformat(),
         }
 
+    def _existing_ids(self, model, records: list[dict], chunk_size: int = 500) -> set[str]:
+        ids = [record["id"] for record in records if record.get("id")]
+        found: set[str] = set()
+        for start in range(0, len(ids), chunk_size):
+            chunk = ids[start:start + chunk_size]
+            found.update(row[0] for row in self.db.query(model.id).filter(model.id.in_(chunk)))
+        return found
+
     def _restore_user_data(self, user_id: str, data: dict) -> dict:
         """Restore user data from decrypted backup. Uses upsert logic."""
         summary = {"accounts": 0, "transactions": 0, "categories": 0, "budgets": 0}
 
+        # One batched id lookup per table instead of a SELECT per record — a
+        # restore of a few thousand transactions otherwise takes over a minute.
+        existing_category_ids = self._existing_ids(Category, data.get("categories", []))
+        existing_account_ids = self._existing_ids(Account, data.get("accounts", []))
+        existing_transaction_ids = self._existing_ids(Transaction, data.get("transactions", []))
+        existing_budget_ids = self._existing_ids(Budget, data.get("budgets", []))
+
         # Restore categories first (transactions reference them)
         for cat_data in data.get("categories", []):
-            existing = self.db.query(Category).filter(
-                Category.id == cat_data["id"]
-            ).first()
-            if not existing:
+            if cat_data["id"] not in existing_category_ids:
                 cat = Category(
                     id=cat_data["id"],
                     name=cat_data["name"],
                     type=cat_data["type"],
                     color=cat_data.get("color", "#10b981"),
-                    icon=cat_data.get("icon"),
                     owner_id=user_id,
                 )
                 self.db.add(cat)
@@ -214,19 +231,16 @@ class BackupService:
 
         # Restore accounts
         for acc_data in data.get("accounts", []):
-            existing = self.db.query(Account).filter(
-                Account.id == acc_data["id"]
-            ).first()
-            if not existing:
+            if acc_data["id"] not in existing_account_ids:
                 acc = Account(
                     id=acc_data["id"],
                     name=acc_data["name"],
-                    account_type=acc_data.get("account_type", "savings"),
+                    # "account_type" is the key older (broken) exports used.
+                    type=acc_data.get("type") or acc_data.get("account_type", "savings"),
                     balance=acc_data.get("balance", 0),
-                    institution=acc_data.get("institution"),
-                    account_number=acc_data.get("account_number"),
                     currency=acc_data.get("currency", "INR"),
-                    color=acc_data.get("color"),
+                    billing_cycle_day=acc_data.get("billing_cycle_day", 1),
+                    credit_limit=acc_data.get("credit_limit"),
                     owner_id=user_id,
                 )
                 self.db.add(acc)
@@ -236,17 +250,14 @@ class BackupService:
 
         # Restore transactions
         for txn_data in data.get("transactions", []):
-            existing = self.db.query(Transaction).filter(
-                Transaction.id == txn_data["id"]
-            ).first()
-            if not existing:
+            if txn_data["id"] not in existing_transaction_ids:
                 txn = Transaction(
                     id=txn_data["id"],
                     amount=txn_data["amount"],
                     type=txn_data["type"],
                     description=txn_data.get("description"),
                     merchant=txn_data.get("merchant"),
-                    date=txn_data.get("date"),
+                    date=_parse_datetime(txn_data.get("date")),
                     notes=txn_data.get("notes"),
                     category_id=txn_data.get("category_id"),
                     account_id=txn_data.get("account_id"),
@@ -258,18 +269,15 @@ class BackupService:
 
         # Restore budgets
         for bud_data in data.get("budgets", []):
-            existing = self.db.query(Budget).filter(
-                Budget.id == bud_data["id"]
-            ).first()
-            if not existing:
+            if bud_data["id"] not in existing_budget_ids:
                 bud = Budget(
                     id=bud_data["id"],
                     name=bud_data["name"],
                     amount=bud_data.get("amount", 0),
                     period=bud_data.get("period", "monthly"),
                     category_id=bud_data.get("category_id"),
-                    start_date=bud_data.get("start_date"),
-                    end_date=bud_data.get("end_date"),
+                    start_date=_parse_date(bud_data.get("start_date")),
+                    is_active=bud_data.get("is_active", True),
                     user_id=user_id,
                 )
                 self.db.add(bud)
