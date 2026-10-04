@@ -128,6 +128,9 @@ class TransactionBase(BaseModel):
     category_id: Optional[str] = None
     destination_account_id: Optional[str] = None
     notes: Optional[str] = None
+    # manual | sms | email | bulk | aa — set by ingestion paths, not by clients.
+    source: Optional[str] = None
+    external_ref: Optional[str] = None
 
     @field_validator("description")
     @classmethod

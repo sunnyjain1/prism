@@ -41,6 +41,7 @@ class SMSIngestRequest(BaseModel):
 class SMSIngestResponse(BaseModel):
     ingested: int
     duplicates: int
+    already_recorded: int = 0  # matched a transaction the user already has
     non_transactional: int
     total_processed: int
 

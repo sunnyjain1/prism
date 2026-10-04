@@ -10,7 +10,16 @@ from sqlalchemy import and_, desc
 
 from models import SMSTransaction, SMSTransactionStatus, Account, Transaction, TransactionType
 from services.sms_parser import parse_sms, compute_dedup_hash, normalize_merchant, ParsedSMS
+from schemas import TransactionCreate
 from services.smart_categorization_service import SmartCategorizationService
+from services.transaction_identity import (
+    IncomingTransaction,
+    MatchResult,
+    TransactionMatcher,
+    extract_bank_reference,
+    type_value,
+)
+from services.transaction_service import TransactionService
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +35,7 @@ class SMSTransactionService:
         """
         ingested = 0
         duplicates = 0
+        already_recorded_count = 0
         non_transactional = 0
 
         for msg in messages:
@@ -64,6 +74,14 @@ class SMSTransactionService:
             # Match account
             matched_account_id = self._match_account(user_id, parsed)
 
+            # Already recorded (typed in, statement import, earlier SMS from another
+            # sender)? Keep the SMS for audit but don't ask the user to confirm it again.
+            reference = extract_bank_reference(body) or parsed.reference_number
+            already_recorded = self._find_recorded(
+                user_id, parsed.amount, parsed.transaction_type, parsed.timestamp or sms_ts,
+                matched_account_id, reference,
+            )
+
             # Suggest category
             suggested_category_id = self._suggest_category(user_id, parsed, body)
 
@@ -89,9 +107,19 @@ class SMSTransactionService:
                 matched_account_id=matched_account_id,
                 suggested_category_id=suggested_category_id,
                 confidence=parsed.confidence,
-                status=SMSTransactionStatus.draft.value,
+                status=(
+                    SMSTransactionStatus.duplicate.value if already_recorded
+                    else SMSTransactionStatus.draft.value
+                ),
                 dedup_hash=dedup_hash,
             )
+            if already_recorded:
+                sms_txn.confirmed_transaction_id = already_recorded.existing.id
+                if already_recorded.reference_to_attach:
+                    already_recorded.existing.external_ref = already_recorded.reference_to_attach
+                self.db.add(sms_txn)
+                already_recorded_count += 1
+                continue
             self.db.add(sms_txn)
             ingested += 1
 
@@ -99,8 +127,9 @@ class SMSTransactionService:
         return {
             "ingested": ingested,
             "duplicates": duplicates,
+            "already_recorded": already_recorded_count,
             "non_transactional": non_transactional,
-            "total_processed": ingested + duplicates + non_transactional,
+            "total_processed": ingested + duplicates + already_recorded_count + non_transactional,
         }
 
     def get_drafts(self, user_id: str, limit: int = 50, offset: int = 0) -> List[SMSTransaction]:
@@ -160,28 +189,74 @@ class SMSTransactionService:
         account_id = override_account_id or sms_txn.matched_account_id
         description = override_description or sms_txn.merchant or sms_txn.raw_body[:80]
 
-        # Create real transaction
-        transaction = Transaction(
-            id=str(uuid4()),
-            amount=abs(amount),
-            type=txn_type,
-            description=description,
-            merchant=sms_txn.merchant,
-            date=sms_txn.sms_timestamp or datetime.utcnow(),
-            owner_id=user_id,
-            category_id=category_id,
-            account_id=account_id,
-            categorization_method="sms_auto" if not override_category_id else "manual",
-            categorization_confidence=sms_txn.confidence if not override_category_id else 1.0,
-        )
-        self.db.add(transaction)
+        reference = extract_bank_reference(sms_txn.raw_body) or sms_txn.reference_number
+        txn_date = sms_txn.sms_timestamp or datetime.utcnow()
 
-        # Update SMS transaction status
+        # The payment may have been recorded since the SMS arrived (typed in, or the
+        # statement import ran). Link to that row instead of creating a second one.
+        recorded = self._find_recorded(
+            user_id, abs(amount), txn_type, txn_date, account_id, reference,
+        )
+        if recorded:
+            if recorded.reference_to_attach:
+                recorded.existing.external_ref = recorded.reference_to_attach
+            sms_txn.status = SMSTransactionStatus.duplicate.value
+            sms_txn.confirmed_transaction_id = recorded.existing.id
+            self.db.commit()
+            return recorded.existing
+
+        # An SMS never names the destination account, and a transfer without one is
+        # invalid — record it as money leaving this account; the user can re-type it.
+        if txn_type == TransactionType.transfer.value:
+            txn_type = TransactionType.expense.value
+
+        # Through TransactionService so balances, caches and device sync stay correct.
+        transaction = TransactionService(self.db).create_transaction(
+            TransactionCreate(
+                id=str(uuid4()),
+                amount=abs(amount),
+                type=txn_type,
+                description=description,
+                merchant=sms_txn.merchant,
+                date=txn_date,
+                timestamp=int(txn_date.timestamp() * 1000),
+                category_id=category_id,
+                account_id=account_id,
+                source="sms",
+                external_ref=reference,
+            ),
+            user_id,
+        )
+        transaction.categorization_method = "sms_auto" if not override_category_id else "manual"
+        transaction.categorization_confidence = sms_txn.confidence if not override_category_id else 1.0
+
         sms_txn.status = SMSTransactionStatus.confirmed.value
         sms_txn.confirmed_transaction_id = transaction.id
-
         self.db.commit()
         return transaction
+
+    def _find_recorded(
+        self,
+        user_id: str,
+        amount: Optional[float],
+        transaction_type,
+        when: Optional[datetime],
+        account_id: Optional[str],
+        reference: Optional[str],
+    ) -> Optional[MatchResult]:
+        """Existing transaction this SMS describes, if the user already has it."""
+        if not amount or not when:
+            return None
+        txn_type = type_value(transaction_type)
+        if txn_type not in {t.value for t in TransactionType}:  # raw SMS type, e.g. "upi"
+            txn_type = self._map_transaction_type(transaction_type)
+        result = TransactionMatcher(self.db, user_id, date_window_days=1).match([
+            IncomingTransaction(
+                amount=abs(amount), type=type_value(txn_type), date=when,
+                account_id=account_id, reference=reference,
+            )
+        ])[0]
+        return result if result.is_duplicate else None
 
     def batch_confirm(self, user_id: str, sms_txn_ids: List[str]) -> dict:
         """Bulk confirm multiple draft SMS transactions."""
@@ -228,37 +303,27 @@ class SMSTransactionService:
         if not accounts:
             return None
 
-        best_match = None
-        best_score = 0
-
+        is_card_sms = parsed.card_type == "credit_card"
+        scores = []
         for account in accounts:
             score = 0
-            acc_name_lower = (account.name or "").lower()
-            acc_institution_lower = (account.institution or "").lower()
-
-            # Bank name match
-            if parsed.bank_name:
-                bank_lower = parsed.bank_name.lower()
-                if bank_lower in acc_name_lower or bank_lower in acc_institution_lower:
-                    score += 3
-
-            # Masked account number match
-            if parsed.masked_account and account.account_number:
-                if account.account_number.endswith(parsed.masked_account):
-                    score += 5  # Strong match
-
-            # Card type match
-            if parsed.card_type == "credit_card" and account.account_type in ("credit", "credit_card"):
+            # Bank name in the account name ("HDFC" in "HDFC Rupay card")
+            if parsed.bank_name and parsed.bank_name.lower() in (account.name or "").lower():
+                score += 3
+            account_type = type_value(account.type)
+            if is_card_sms and account_type in ("credit", "credit_card"):
                 score += 2
-            elif parsed.card_type == "debit_card" and account.account_type in ("savings", "checking"):
-                score += 2
+            elif not is_card_sms and account_type in ("savings", "checking", "current"):
+                score += 1
+            scores.append((score, account.id))
 
-            if score > best_score:
-                best_score = score
-                best_match = account.id
-
-        # Only return if we have reasonable confidence
-        return best_match if best_score >= 2 else None
+        scores.sort(reverse=True)
+        best_score, best_match = scores[0]
+        # Two equally good accounts (e.g. "HDFC" and "Papa HDFC") — let the user pick
+        # rather than guessing; matching then considers every account.
+        if len(scores) > 1 and scores[1][0] == best_score:
+            return None
+        return best_match if best_score >= 3 else None
 
     def _suggest_category(
         self, user_id: str, parsed: ParsedSMS, raw_body: str = ""

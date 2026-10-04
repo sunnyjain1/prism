@@ -88,6 +88,12 @@ class Transaction(Base):
     category = relationship("Category")
     categorization_method = Column(String, nullable=True)
     categorization_confidence = Column(Float, nullable=True)
+
+    # Where the row came from (manual | sms | email | bulk | aa); NULL = legacy/manual.
+    source = Column(String, nullable=True)
+    # Bank reference (UPI RRN / IMPS / NEFT UTR) used to recognise the same payment
+    # arriving from several sources. See services/transaction_identity.py.
+    external_ref = Column(String, nullable=True, index=True)
     
     # Account relations
     account_id = Column(String, ForeignKey("accounts.id"), nullable=True)

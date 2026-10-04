@@ -9,7 +9,12 @@ import logging
 import traceback
 
 from services.transaction_service import TransactionService
-from services.deduplication_service import DeduplicationService
+from services.transaction_identity import (
+    IncomingTransaction,
+    TransactionMatcher,
+    extract_bank_reference,
+    type_value,
+)
 from services.import_entity_service import ImportEntityService
 from services.category_inference_service import CategoryInferenceService
 from services.import_profile_service import ImportProfileService
@@ -140,23 +145,33 @@ class BulkUploadService:
                 "warnings": import_result.warnings
             }
         
-        # Deduplication logic
+        # Deduplication: match against what the user already has (by bank reference,
+        # else account + type + amount + date). Repeated identical rows in a file are
+        # kept — they are separate real payments — unless each finds its own match.
         final_transactions = import_result.transactions
         duplicate_count = 0
-        
+        for tx in final_transactions:
+            tx.source = "bulk"
+            tx.external_ref = tx.external_ref or extract_bank_reference(tx.description)
+
         if skip_duplicates:
-            dedup_service = DeduplicationService(self.db, owner_id)
-            
-            # 1. Remove duplicates within batch
-            unique_in_batch = dedup_service.remove_duplicates_within_batch(final_transactions)
-            batch_dups = len(final_transactions) - len(unique_in_batch)
-            
-            # 2. Check against existing transactions
-            final_transactions, cross_duplicates = dedup_service.find_duplicates(unique_in_batch)
-            duplicate_count = len(cross_duplicates) + batch_dups
-            
+            matches = TransactionMatcher(self.db, owner_id).match([
+                IncomingTransaction(
+                    amount=tx.amount, type=type_value(tx.type), date=tx.date,
+                    account_id=target_account_id or tx.account_id, reference=tx.external_ref,
+                )
+                for tx in final_transactions
+            ])
+            duplicate_count = sum(1 for match in matches if match.is_duplicate)
+            if not preview:
+                for match in matches:
+                    if match.reference_to_attach:
+                        match.existing.external_ref = match.reference_to_attach
+            final_transactions = [
+                tx for tx, match in zip(final_transactions, matches) if not match.is_duplicate
+            ]
             if duplicate_count > 0:
-                logger.info(f"Skipped {duplicate_count} duplicates ({batch_dups} in batch, {len(cross_duplicates)} cross-batch)")
+                logger.info(f"Skipped {duplicate_count} transactions already recorded")
 
         if preview:
             preview_transactions = [tx.model_dump(mode="json") for tx in final_transactions[:50]]
