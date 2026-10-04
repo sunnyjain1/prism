@@ -11,9 +11,15 @@ from repositories.sync_repository import SyncRepository
 from services.gmail_service import GmailService
 from services.bulk_upload_service import BulkUploadService
 from services.transaction_service import TransactionService
-from services.deduplication_service import DeduplicationService
+from services.transaction_identity import (
+    IncomingTransaction,
+    TransactionMatcher,
+    extract_bank_reference,
+    type_value,
+)
 
 logger = logging.getLogger(__name__)
+
 
 
 class SyncOrchestrator:
@@ -237,18 +243,32 @@ class SyncOrchestrator:
             parse_errors = len(import_result.errors) if import_result.errors else 0
             return 0, 0, parse_errors, 0
 
-        dedup_service = DeduplicationService(self.db, config.owner_id)
-        unique_in_batch = dedup_service.remove_duplicates_within_batch(import_result.transactions)
-        final_transactions, _ = dedup_service.find_duplicates(unique_in_batch)
+        for tx in import_result.transactions:
+            tx.account_id = config.account_id
+            tx.source = "email"
+            tx.external_ref = tx.external_ref or extract_bank_reference(tx.description)
 
-        duplicates_skipped = len(import_result.transactions) - len(final_transactions)
+        matches = TransactionMatcher(self.db, config.owner_id).match([
+            IncomingTransaction(
+                amount=tx.amount, type=type_value(tx.type), date=tx.date,
+                account_id=tx.account_id, reference=tx.external_ref,
+            )
+            for tx in import_result.transactions
+        ])
 
         tx_service = TransactionService(self.db)
         imported_count = 0
+        duplicates_skipped = 0
         import_errors_list = []
 
-        for tx in final_transactions:
-            tx.account_id = config.account_id
+        for tx, match in zip(import_result.transactions, matches):
+            if match.is_duplicate:
+                duplicates_skipped += 1
+                # Keep the user's own row; just teach it the bank reference so the
+                # SMS / next statement for this payment matches it exactly.
+                if match.reference_to_attach:
+                    match.existing.external_ref = match.reference_to_attach
+                continue
             try:
                 tx_service.create_transaction(tx, config.owner_id)
                 imported_count += 1
@@ -256,6 +276,7 @@ class SyncOrchestrator:
                 import_errors_list.append(str(e))
                 logger.warning(f"Failed to import transaction: {e}")
 
+        self.db.commit()
         return imported_count, duplicates_skipped, len(import_result.errors), len(import_errors_list)
 
     def sync_all_due(self) -> list:
